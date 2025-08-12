@@ -34,24 +34,7 @@ const userSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   dob: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date format." }),
   type: z.enum(["student", "teacher"]),
-  subjects: z.string().optional(),
-  group: z.string().optional(),
-}).refine(data => {
-    if (data.type === 'teacher' && !data.subjects) {
-      return false;
-    }
-    return true;
-}, {
-    message: "Subjects are required for teachers.",
-    path: ["subjects"],
-}).refine(data => {
-    if (data.type === 'student' && !data.group) {
-        return false;
-    }
-    return true;
-}, {
-    message: "Group is required for students.",
-    path: ["group"],
+  subjects: z.string().min(1, { message: "Subjects are required." }),
 });
 
 type UserFormData = z.infer<typeof userSchema>;
@@ -204,21 +187,11 @@ function UserManagementSection() {
                         />
                     </div>
                     
-                    {userType === 'student' && (
-                        <div className="space-y-2">
-                            <Label htmlFor="group">Student Group</Label>
-                            <Input id="group" {...register("group")} placeholder="e.g., Group A" />
-                            {errors.group && <p className="text-sm text-destructive">{errors.group.message}</p>}
-                        </div>
-                    )}
-
-                    {userType === 'teacher' && (
-                        <div className="space-y-2">
-                            <Label htmlFor="subjects">Subjects</Label>
-                            <Input id="subjects" {...register("subjects")} placeholder="Comma-separated, e.g., Math101,Phys201" />
-                            {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
-                        </div>
-                    )}
+                    <div className="space-y-2">
+                        <Label htmlFor="subjects">Subjects</Label>
+                        <Input id="subjects" {...register("subjects")} placeholder="Comma-separated, e.g., Math101,Phys201" />
+                        {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
+                    </div>
 
                     <Button type="submit" disabled={isCreatingUser}>
                         {isCreatingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -332,3 +305,5 @@ export default function DataManagementPage() {
     </div>
   );
 }
+
+    
