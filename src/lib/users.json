@@ -1,0 +1,17 @@
+
+[
+  { "id": "admin001", "name": "Dr. Smith", "dob": "1975-03-15", "type": "admin" },
+  { "id": "teacher001", "name": "Mr. Jones", "dob": "1982-07-22", "type": "teacher", "subjects": ["Math101", "Phys201"] },
+  { "id": "teacher002", "name": "Ms. Davis", "dob": "1990-11-01", "type": "teacher", "subjects": ["Chem101"] },
+  { "id": "teacher003", "name": "Mr. Wilson", "dob": "1985-05-10", "type": "teacher", "subjects": ["CS101"] },
+  { "id": "teacher004", "name": "Mrs. Taylor", "dob": "1988-09-30", "type": "teacher", "subjects": ["Eng101"] },
+  { "id": "teacher005", "name": "Dr. Brown", "dob": "1978-01-20", "type": "teacher", "subjects": ["Bio101"] },
+  { "id": "teacher006", "name": "Prof. Miller", "dob": "1983-04-12", "type": "teacher", "subjects": ["Hist101"] },
+  { "id": "teacher007", "name": "Mr. Moore", "dob": "1992-06-25", "type": "teacher", "subjects": ["Art101"] },
+  { "id": "teacher008", "name": "Ms. Garcia", "dob": "1989-08-18", "type": "teacher", "subjects": ["Span101"] },
+  { "id": "teacher009", "name": "Mr. Rodriguez", "dob": "1986-12-05", "type": "teacher", "subjects": ["PE101"] },
+  { "id": "teacher010", "name": "Ms. Lee", "dob": "1991-02-14", "type": "teacher", "subjects": ["Music101"] },
+  { "id": "student001", "name": "Alice Johnson", "dob": "2005-09-10", "type": "student", "group": "Group A" },
+  { "id": "student002", "name": "Bob Williams", "dob": "2006-03-20", "type": "student", "group": "Group B" },
+  { "id": "student003", "name": "Charlie Brown", "dob": "2005-11-30", "type": "student", "group": "Group A" }
+]

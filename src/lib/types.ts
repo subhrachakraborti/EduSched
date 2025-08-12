@@ -1,3 +1,13 @@
+
+export interface User {
+  id: string;
+  name: string;
+  dob: string;
+  type: 'admin' | 'teacher' | 'student';
+  subjects?: string[];
+  group?: string;
+}
+
 export interface Course {
   id: string;
   name: string;
@@ -10,7 +20,7 @@ export interface Teacher {
 
 export interface Classroom {
   id: string;
-  name: string;
+  name:string;
 }
 
 export interface TimeSlot {

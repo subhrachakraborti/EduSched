@@ -1,14 +1,15 @@
+
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { useSchedule } from '@/context/schedule-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Book, School, Users, Clock, UsersRound, Trash2, Loader2 } from 'lucide-react';
+import { Book, School, Users, Clock, UsersRound, Trash2, Loader2, FileWarning } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { generateTimetableAction } from '@/app/actions';
 import { useRouter } from 'next/navigation';
@@ -77,6 +78,7 @@ function DataSection<T extends { id: string; name: string } | { id: string; slot
 
 export default function DataManagementPage() {
   const { 
+    user,
     courses, addCourse, removeCourse, 
     teachers, addTeacher, removeTeacher, 
     classrooms, addClassroom, removeClassroom, 
@@ -87,6 +89,18 @@ export default function DataManagementPage() {
   
   const { toast } = useToast();
   const router = useRouter();
+
+  if (user?.type !== 'admin') {
+    return (
+        <div className="flex min-h-[400px] flex-col items-center justify-center rounded-lg border border-dashed bg-card-foreground/5 p-8 text-center">
+            <FileWarning className="h-12 w-12 text-muted-foreground" />
+            <h3 className="mt-4 text-lg font-semibold">Access Denied</h3>
+            <p className="mb-4 mt-2 text-sm text-muted-foreground">
+                You do not have permission to view this page.
+            </p>
+        </div>
+    );
+  }
 
   const handleGenerate = async () => {
     setIsLoading(true);

@@ -1,10 +1,15 @@
+
 "use client";
 
 import type { ReactNode } from 'react';
-import { createContext, useContext, useState } from 'react';
-import type { Course, Teacher, Classroom, TimeSlot, StudentGroup, ScheduleEntry } from '@/lib/types';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { Course, Teacher, Classroom, TimeSlot, StudentGroup, ScheduleEntry, User } from '@/lib/types';
 
 interface ScheduleContextType {
+  user: User | null;
+  authLoading: boolean;
+  login: (user: User) => void;
+  logout: () => void;
   courses: Course[];
   addCourse: (course: Omit<Course, 'id'>) => void;
   removeCourse: (id: string) => void;
@@ -30,6 +35,9 @@ interface ScheduleContextType {
 const ScheduleContext = createContext<ScheduleContextType | undefined>(undefined);
 
 export function ScheduleProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  
   const [courses, setCourses] = useState<Course[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
@@ -37,6 +45,29 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const [studentGroups, setStudentGroups] = useState<StudentGroup[]>([]);
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+    } catch (error) {
+      console.error("Failed to parse user from localStorage", error);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  const login = (user: User) => {
+    setUser(user);
+    localStorage.setItem('user', JSON.stringify(user));
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem('user');
+  };
 
   const addCourse = (course: Omit<Course, 'id'>) => setCourses(prev => [...prev, { ...course, id: crypto.randomUUID() }]);
   const removeCourse = (id: string) => setCourses(prev => prev.filter(c => c.id !== id));
@@ -61,6 +92,10 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   return (
     <ScheduleContext.Provider
       value={{
+        user,
+        authLoading,
+        login,
+        logout,
         courses,
         addCourse,
         removeCourse,
