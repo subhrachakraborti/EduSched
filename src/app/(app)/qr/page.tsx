@@ -104,18 +104,13 @@ export default function QrPage() {
     scannedCodesThisSession.current.add(data);
 
     const parts = data.split('-');
-    // Expecting studentId, YYYY, MM, DD, subjectCode -> 5 parts
-    if (parts.length < 5) {
+    // Expecting studentId, YYYY-MM-DD, subjectCode
+    if (parts.length < 3) {
       setScannedResults(prev => [...prev, { type: 'info', message: `Scanned non-student QR: ${data}` }]);
       return;
     }
     
-    const studentId = parts[0];
-    const date = `${parts[1]}-${parts[2]}-${parts[3]}`;
-    const subject = parts.slice(4).join('-'); // handles subject codes with hyphens
-    const reconstructedData = `${studentId}-${date}-${subject}`;
-
-    const result = await recordAttendanceAction(reconstructedData);
+    const result = await recordAttendanceAction(data);
 
     if (result.error) {
       setScannedResults(prev => [...prev, { type: 'error', message: result.error! }]);
@@ -296,8 +291,8 @@ export default function QrPage() {
       <h1 className="text-2xl font-bold md:text-3xl">QR Tools</h1>
       <canvas ref={canvasRef} style={{ display: "none" }} />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {renderQrGenerator()}
         {renderScanner()}
+        {renderQrGenerator()}
       </div>
     </div>
   );
