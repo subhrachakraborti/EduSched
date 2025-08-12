@@ -4,9 +4,13 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Course, Teacher, Classroom, TimeSlot, StudentGroup, ScheduleEntry, User } from '@/lib/types';
+import { auth } from '@/lib/firebase';
+import type { User as FirebaseUser } from 'firebase/auth';
+import { supabase } from '@/lib/supabase';
 
 interface ScheduleContextType {
   user: User | null;
+  firebaseUser: FirebaseUser | null;
   authLoading: boolean;
   login: (user: User) => void;
   logout: () => void;
@@ -36,6 +40,7 @@ const ScheduleContext = createContext<ScheduleContextType | undefined>(undefined
 
 export function ScheduleProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   
   const [courses, setCourses] = useState<Course[]>([]);
@@ -47,26 +52,45 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
+    const unsubscribe = auth.onAuthStateChanged(async (fbUser) => {
+      setFirebaseUser(fbUser);
+      if (fbUser) {
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', fbUser.uid)
+            .single();
+
+          if (error) throw error;
+          
+          if (data) {
+            setUser(data as User);
+          } else {
+             setUser(null);
+          }
+        } catch (error) {
+          console.error("Error fetching user profile from Supabase:", error);
+          setUser(null);
+        }
+      } else {
+        setUser(null);
       }
-    } catch (error) {
-      console.error("Failed to parse user from localStorage", error);
-    } finally {
       setAuthLoading(false);
-    }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = (user: User) => {
     setUser(user);
-    localStorage.setItem('user', JSON.stringify(user));
+    // Login is now handled by onAuthStateChanged
   };
 
   const logout = () => {
+    auth.signOut();
     setUser(null);
-    localStorage.removeItem('user');
+    setFirebaseUser(null);
   };
 
   const addCourse = (course: Omit<Course, 'id'>) => setCourses(prev => [...prev, { ...course, id: crypto.randomUUID() }]);
@@ -93,6 +117,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     <ScheduleContext.Provider
       value={{
         user,
+        firebaseUser,
         authLoading,
         login,
         logout,
