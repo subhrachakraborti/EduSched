@@ -52,10 +52,18 @@ export async function recordAttendanceAction(
 ): Promise<{ message?: string; error?: string }> {
     try {
         const parts = qrData.split('-');
-        if (parts.length !== 3) {
+        // studentId-YYYY-MM-DD-SubjectCode
+        if (parts.length < 5) {
             return { error: 'Invalid QR code format.' };
         }
-        const [studentId, date, subject] = parts;
+        
+        const studentId = parts[0];
+        const date = `${parts[1]}-${parts[2]}-${parts[3]}`;
+        const subject = parts.slice(4).join('-');
+
+        if (!studentId || !date || !subject) {
+            return { error: 'Invalid QR code data.' };
+        }
 
         const filePath = path.join(process.cwd(), 'src', 'lib', 'attendance.json');
         
@@ -93,5 +101,3 @@ export async function recordAttendanceAction(
         return { error: 'An unexpected error occurred while recording attendance.' };
     }
 }
-
-    
