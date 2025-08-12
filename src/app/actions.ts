@@ -52,7 +52,7 @@ export async function recordAttendanceAction(
 ): Promise<{ studentName?: string; error?: string }> {
     try {
         const parts = qrData.split('-');
-        if (parts.length < 3) {
+        if (parts.length < 4) { // studentId, YYYY, MM, DD, subject...
             return { error: 'Invalid QR code format.' };
         }
         
@@ -73,6 +73,7 @@ export async function recordAttendanceAction(
             .single();
 
         if (studentError || !studentData) {
+            console.error("Student not found error:", studentError)
             return { error: 'Student not found.' };
         }
         const studentName = studentData.name;
@@ -83,7 +84,8 @@ export async function recordAttendanceAction(
             .select('id')
             .eq('student_id', studentId)
             .eq('date', date)
-            .eq('subject_code', subject);
+            .eq('subject_code', subject)
+            .limit(1);
 
         if (checkError) {
             console.error('Error checking attendance:', checkError);
@@ -116,3 +118,5 @@ export async function recordAttendanceAction(
         return { error: 'An unexpected error occurred while recording attendance.' };
     }
 }
+
+    
