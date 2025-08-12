@@ -4,23 +4,29 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { QrCode, ScanLine, CheckCircle, XCircle, Video, VideoOff } from "lucide-react";
+import { QrCode, ScanLine, Video, VideoOff } from "lucide-react";
 import { useSchedule } from "@/context/schedule-context";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import jsQR from "jsqr";
 import { recordAttendanceAction } from "@/app/actions";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import subjects from "@/lib/subjects.json";
+
+type Subject = {
+  code: string;
+  name: string;
+};
 
 export default function QrPage() {
   const { user } = useSchedule();
   const { toast } = useToast();
   
-  const [qrStudentId, setQrStudentId] = useState("");
-  const [qrSubject, setQrSubject] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [userSubjects, setUserSubjects] = useState<Subject[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -29,41 +35,29 @@ export default function QrPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [scannedCodes, setScannedCodes] = useState<string[]>([]);
   
-  const handleGenerateQr = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    let studentId = "";
-    let subject = "";
-
-    if (user?.type === 'student') {
-      studentId = user.id;
-      // For now, let's use a placeholder subject. This will be updated later.
-      subject = "SUB101"; 
-    } else {
-      studentId = qrStudentId.trim();
-      subject = qrSubject.trim();
+  useEffect(() => {
+    if (user?.type === 'student' && user.group) {
+      const studentGroup = user.group as keyof typeof subjects;
+      setUserSubjects(subjects[studentGroup] || []);
+    } else if (user?.type === 'teacher') {
+      // Teacher's static QR code
+      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(user.id)}`);
     }
+  }, [user]);
 
-    if (studentId && subject) {
-      const dataToEncode = `${studentId}-${today}-${subject}`;
+  const handleGenerateStudentQr = () => {
+    if (user?.type === 'student' && selectedSubject) {
+      const today = new Date().toISOString().slice(0, 10);
+      const dataToEncode = `${user.id}-${today}-${selectedSubject}`;
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
     } else {
         toast({
             variant: "destructive",
             title: "Missing Information",
-            description: "Please provide both Student ID and Subject Code.",
+            description: "Please select a subject to generate your QR code.",
         })
     }
   };
-
-  useEffect(() => {
-    // Auto-generate for student on page load
-    if (user?.type === 'student') {
-      const today = new Date().toISOString().slice(0, 10);
-      const subject = "SUB101"; // Placeholder
-      const dataToEncode = `${user.id}-${today}-${subject}`;
-      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
-    }
-  }, [user]);
 
   const startScan = async () => {
     setScannedCodes([]);
@@ -155,112 +149,133 @@ export default function QrPage() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isScanning, hasCameraPermission, toast, scannedCodes, handleScan]);
+  }, [isScanning, hasCameraPermission]);
+
+
+  const renderQrGenerator = () => {
+    if (user?.type === 'student') {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>QR Code Generator</CardTitle>
+            <CardDescription>Select your subject to generate a daily QR code for attendance.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="subject">Subject</Label>
+              <Select onValueChange={setSelectedSubject} value={selectedSubject}>
+                <SelectTrigger id="subject">
+                  <SelectValue placeholder="Select a subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {userSubjects.map(sub => (
+                    <SelectItem key={sub.code} value={sub.code}>{sub.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleGenerateStudentQr} disabled={!selectedSubject} className="w-full bg-accent hover:bg-accent/90">Generate QR Code</Button>
+            {qrCodeUrl && (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
+                <Image src={qrCodeUrl} alt="Generated QR Code" width={200} height={200} className="rounded-md" />
+                <p className="text-center text-sm text-muted-foreground">Show this code to your teacher to mark attendance.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+    if (user?.type === 'teacher') {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Static QR Code</CardTitle>
+            <CardDescription>This is your static identification QR code.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {qrCodeUrl && (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
+                <Image src={qrCodeUrl} alt="Teacher QR Code" width={200} height={200} className="rounded-md" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+    return null; // Admin has no QR code generator
+  };
+
+  const renderScanner = () => {
+    if (user?.type === 'admin' || user?.type === 'teacher') {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>Attendance Scanner</CardTitle>
+            <CardDescription>Scan a student's QR code to mark attendance. The camera will scan continuously.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center space-y-4">
+            <div className="relative h-64 w-full overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
+              {isScanning ? (
+                <>
+                  <video ref={videoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
+                  <div className="scanline" />
+                </>
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                   <QrCode className="h-16 w-16" />
+                   <p className="text-center text-sm">Camera is off</p>
+                </div>
+              )}
+            </div>
+            
+            {!isScanning ? (
+                <Button onClick={startScan} className="bg-accent hover:bg-accent/90">
+                    <Video className="mr-2 h-4 w-4" /> Start Camera
+                </Button>
+            ) : (
+                <Button onClick={stopScan} variant="destructive">
+                    <VideoOff className="mr-2 h-4 w-4" /> Stop Camera
+                </Button>
+            )}
+            
+             {hasCameraPermission === false && (
+                <Alert variant="destructive">
+                    <AlertTitle>Camera Access Denied</AlertTitle>
+                    <AlertDescription>
+                    Please allow camera access in your browser settings to use this feature.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {scannedCodes.length > 0 && (
+              <div className="w-full">
+                <h4 className="font-semibold">Scanned this session:</h4>
+                <ul className="max-h-24 overflow-y-auto rounded-md border p-2 text-sm text-muted-foreground">
+                  {scannedCodes.map((code, i) => {
+                     try {
+                        const [studentId, , subject] = code.split('-');
+                        return <li key={i}>{studentId} - {subject}</li>;
+                      } catch (e) {
+                        return <li key={i}>Invalid code scanned</li>
+                      }
+                  })}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+    return null;
+  }
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold md:text-3xl">QR Tools</h1>
       <canvas ref={canvasRef} style={{ display: "none" }} />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>QR Code Generator</CardTitle>
-            <CardDescription>
-              {user?.type === 'student' ? 'Your daily QR code for attendance.' : 'Create a QR code for a student\'s attendance.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-             {user?.type !== 'student' && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                      <Label htmlFor="studentId">Student ID</Label>
-                      <Input
-                          id="studentId"
-                          placeholder="e.g., student001"
-                          value={qrStudentId}
-                          onChange={(e) => setQrStudentId(e.target.value)}
-                      />
-                  </div>
-                  <div className="space-y-2">
-                      <Label htmlFor="subjectCode">Subject Code</Label>
-                      <Input
-                          id="subjectCode"
-                          placeholder="e.g., SUB101"
-                          value={qrSubject}
-                          onChange={(e) => setQrSubject(e.target.value)}
-                      />
-                  </div>
-                  <Button onClick={handleGenerateQr} className="w-full bg-accent hover:bg-accent/90">Generate</Button>
-                </div>
-            )}
-            {qrCodeUrl && (
-              <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
-                <Image
-                  src={qrCodeUrl}
-                  alt="Generated QR Code"
-                  width={200}
-                  height={200}
-                  className="rounded-md"
-                />
-                {user?.type === 'student' && (
-                    <p className="text-center text-sm text-muted-foreground">Show this code to your teacher to mark attendance.</p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        
-        {(user?.type === 'admin' || user?.type === 'teacher') && (
-            <Card>
-            <CardHeader>
-                <CardTitle>Attendance Scanner</CardTitle>
-                <CardDescription>Scan a QR code to mark attendance. The camera will scan continuously.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center justify-center space-y-4">
-                <div className="relative h-64 w-full overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
-                  {isScanning ? (
-                    <>
-                      <video ref={videoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
-                      <div className="scanline" />
-                    </>
-                  ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
-                       <QrCode className="h-16 w-16" />
-                       <p className="text-center text-sm">Camera is off</p>
-                    </div>
-                  )}
-                </div>
-                
-                {!isScanning ? (
-                    <Button onClick={startScan} className="bg-accent hover:bg-accent/90">
-                        <Video className="mr-2 h-4 w-4" /> Start Camera
-                    </Button>
-                ) : (
-                    <Button onClick={stopScan} variant="destructive">
-                        <VideoOff className="mr-2 h-4 w-4" /> Stop Camera
-                    </Button>
-                )}
-                
-                 {hasCameraPermission === false && (
-                    <Alert variant="destructive">
-                        <AlertTitle>Camera Access Denied</AlertTitle>
-                        <AlertDescription>
-                        Please allow camera access in your browser settings to use this feature.
-                        </AlertDescription>
-                    </Alert>
-                )}
-
-                {scannedCodes.length > 0 && (
-                  <div className="w-full">
-                    <h4 className="font-semibold">Scanned this session:</h4>
-                    <ul className="max-h-24 overflow-y-auto rounded-md border p-2 text-sm text-muted-foreground">
-                      {scannedCodes.map((code, i) => <li key={i}>{code.split('-')[0]} - {code.split('-')[2]}</li>)}
-                    </ul>
-                  </div>
-                )}
-            </CardContent>
-            </Card>
-        )}
+        {renderQrGenerator()}
+        {renderScanner()}
       </div>
     </div>
   );

@@ -1,0 +1,13 @@
+
+{
+  "Group A": [
+    { "code": "Math101", "name": "Mathematics 101" },
+    { "code": "Phys201", "name": "Physics 201" },
+    { "code": "CS101", "name": "Computer Science 101" }
+  ],
+  "Group B": [
+    { "code": "Chem101", "name": "Chemistry 101" },
+    { "code": "Eng101", "name": "English 101" },
+    { "code": "Bio101", "name": "Biology 101" }
+  ]
+}
