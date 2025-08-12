@@ -13,7 +13,7 @@ import jsQR from "jsqr";
 import { recordAttendanceAction } from "@/app/actions";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import subjects from "@/lib/subjects.json";
+import allSubjectsData from "@/lib/subjects.json";
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
 
@@ -26,6 +26,9 @@ type ScannedResult = {
   type: 'success' | 'error' | 'info';
   message: string;
 }
+
+// Flatten all subjects from the JSON file for easy lookup
+const allSubjects: Subject[] = Object.values(allSubjectsData).flat();
 
 export default function QrPage() {
   const { user } = useSchedule();
@@ -46,11 +49,10 @@ export default function QrPage() {
   
   useEffect(() => {
     if (user?.type === 'student' && user.subjects) {
-      // Assuming subjects are stored as an array of codes in the user object now.
-      // We need to find the matching subject names from our subjects.json
-      const allSubjects = Object.values(subjects).flat();
-      const studentSubjects = allSubjects.filter(s => user.subjects?.includes(s.code));
-      setUserSubjects(studentSubjects);
+      const studentSubjectDetails = allSubjects.filter(subject => 
+        user.subjects?.includes(subject.code)
+      );
+      setUserSubjects(studentSubjectDetails);
     } else if (user?.type === 'teacher') {
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(user.id)}`);
     }
@@ -273,13 +275,17 @@ export default function QrPage() {
                   <SelectValue placeholder="Select a subject" />
                 </SelectTrigger>
                 <SelectContent>
-                  {userSubjects.map(sub => (
-                    <SelectItem key={sub.code} value={sub.code}>{sub.name}</SelectItem>
-                  ))}
+                  {userSubjects.length > 0 ? (
+                    userSubjects.map(sub => (
+                      <SelectItem key={sub.code} value={sub.code}>{sub.name}</SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="none" disabled>No subjects assigned</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleGenerateStudentQr} disabled={!selectedSubject} className="w-full bg-accent hover:bg-accent/90">Generate QR Code</Button>
+            <Button onClick={handleGenerateStudentQr} disabled={!selectedSubject || userSubjects.length === 0} className="w-full bg-accent hover:bg-accent/90">Generate QR Code</Button>
             {qrCodeUrl && (
               <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
                 <Image src={qrCodeUrl} alt="Generated QR Code" width={200} height={200} className="rounded-md" />
