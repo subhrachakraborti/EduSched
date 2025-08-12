@@ -5,6 +5,7 @@ export interface User {
   dob: string;
   type: 'admin' | 'teacher' | 'student';
   subjects?: string[];
+  group?: string;
 }
 
 export interface Course {
@@ -50,5 +51,7 @@ export interface AttendanceEntry {
   marked_by: string; // Firebase UID of admin/teacher
   created_at?: string;
 }
+
+    
 
     

@@ -35,7 +35,17 @@ const userSchema = z.object({
   dob: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date format." }),
   type: z.enum(["student", "teacher"]),
   subjects: z.string().min(1, { message: "Subjects are required." }),
+  group: z.string().optional(),
+}).refine(data => {
+    if (data.type === 'student' && !data.group) {
+        return false;
+    }
+    return true;
+}, {
+    message: "Student group is required.",
+    path: ["group"],
 });
+
 
 type UserFormData = z.infer<typeof userSchema>;
 
@@ -193,6 +203,14 @@ function UserManagementSection() {
                         {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
                     </div>
 
+                    {userType === 'student' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="group">Student Group</Label>
+                            <Input id="group" {...register("group")} placeholder="e.g., Group A" />
+                            {errors.group && <p className="text-sm text-destructive">{errors.group.message}</p>}
+                        </div>
+                    )}
+
                     <Button type="submit" disabled={isCreatingUser}>
                         {isCreatingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Create User
@@ -305,5 +323,7 @@ export default function DataManagementPage() {
     </div>
   );
 }
+
+    
 
     

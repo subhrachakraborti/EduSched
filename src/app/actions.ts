@@ -140,6 +140,7 @@ export async function createUserAction(
         dob: userData.dob,
         type: userData.type,
         subjects: Array.isArray(userData.subjects) ? userData.subjects : userData.subjects?.split(',').map(s => s.trim()),
+        group: userData.group,
     };
 
     // 2. Insert user data into Supabase
@@ -168,5 +169,7 @@ export async function createUserAction(
     return { error: errorMessage };
   }
 }
+
+    
 
     
