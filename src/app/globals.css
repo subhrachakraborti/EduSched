@@ -79,27 +79,22 @@
 }
 
 .scanline {
-  animation: scan 2s linear infinite;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    hsl(var(--primary) / 0.5),
-    transparent
-  );
-  height: 4px;
-  width: 100%;
   position: absolute;
   top: 0;
   left: 0;
+  right: 0;
+  height: 3px;
+  background: hsl(var(--primary));
+  box-shadow: 0px 0px 10px hsl(var(--primary));
+  animation: scan 3s ease-in-out infinite;
   border-radius: 9999px;
-  box-shadow: 0 0 10px hsl(var(--primary));
 }
 
 @keyframes scan {
-  0% {
-    transform: translateY(0);
+  0%, 100% {
+    top: 0;
   }
-  100% {
-    transform: translateY(100%);
+  50% {
+    top: calc(100% - 3px);
   }
 }

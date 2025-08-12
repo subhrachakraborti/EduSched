@@ -1,19 +1,32 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { QrCode, ScanLine, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { QrCode, ScanLine, CheckCircle, XCircle, Loader2, Video, VideoOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSchedule } from "@/context/schedule-context";
+import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import jsQR from "jsqr";
 
 export default function QrPage() {
   const { user } = useSchedule();
+  const { toast } = useToast();
+  
   const [qrInput, setQrInput] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const handleGenerateQr = () => {
     let dataToEncode = "";
@@ -30,49 +43,91 @@ export default function QrPage() {
   };
 
   useEffect(() => {
-    // Auto-generate QR for student on page load
-    if(user?.type === 'student') {
+    if (user?.type === 'student') {
       const today = new Date().toISOString().slice(0, 10);
       const dataToEncode = `${user.id}-${today}`;
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
     }
   }, [user]);
 
-  const [scanState, setScanState] = useState<"idle" | "scanning" | "success" | "fail">("idle");
-  const [scanMessage, setScanMessage] = useState("Ready to scan attendance.");
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (scanState === "scanning") {
-      timer = setTimeout(() => {
-        const success = Math.random() > 0.2; // 80% success rate
-        if (success) {
-          setScanState("success");
-          setScanMessage(`Attendance marked for User ID: ${Math.floor(1000 + Math.random() * 9000)}`);
-        } else {
-          setScanState("fail");
-          setScanMessage("Invalid QR Code. Please try again.");
-        }
-      }, 3000);
-    } else if (scanState === "success" || scanState === "fail") {
-      timer = setTimeout(() => {
-        setScanState("idle");
-        setScanMessage("Ready to scan attendance.");
-      }, 5000);
-    }
-    return () => clearTimeout(timer);
-  }, [scanState]);
-
-  const handleScanClick = () => {
-    if (scanState === "idle") {
-      setScanState("scanning");
-      setScanMessage("Searching for QR Code...");
+  const startScan = async () => {
+    setScanResult(null);
+    setScanError(null);
+    setIsScanning(true);
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      setHasCameraPermission(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      setHasCameraPermission(false);
+      setIsScanning(false);
+      toast({
+        variant: 'destructive',
+        title: 'Camera Access Denied',
+        description: 'Please enable camera permissions in your browser settings.',
+      });
     }
   };
+
+  const stopScan = () => {
+    setIsScanning(false);
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  useEffect(() => {
+    if (!isScanning || !hasCameraPermission) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return;
+
+    let animationFrameId: number;
+
+    const tick = () => {
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "dontInvert",
+        });
+
+        if (code) {
+          setScanResult(code.data);
+          stopScan();
+          toast({ title: "QR Code Scanned!", description: `Data: ${code.data}` });
+        } else {
+          animationFrameId = requestAnimationFrame(tick);
+        }
+      } else {
+        animationFrameId = requestAnimationFrame(tick);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(tick);
+    
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      stopScan();
+    };
+  }, [isScanning, hasCameraPermission, toast]);
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold md:text-3xl">QR Tools</h1>
+      <canvas ref={canvasRef} style={{ display: "none" }} />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -91,12 +146,6 @@ export default function QrPage() {
                 />
                 <Button onClick={handleGenerateQr} className="bg-accent hover:bg-accent/90">Generate</Button>
                 </div>
-            )}
-             {user?.type === 'student' && (
-                 <Button onClick={handleGenerateQr} className="w-full bg-accent hover:bg-accent/90">
-                    <QrCode className="mr-2 h-4 w-4" />
-                    Generate My Daily Code
-                </Button>
             )}
             {qrCodeUrl && (
               <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
@@ -122,31 +171,42 @@ export default function QrPage() {
                 <CardDescription>Scan a QR code to mark attendance.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center space-y-4">
-                <div className="relative h-48 w-48 overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
-                {scanState === "idle" && <ScanLine className="h-full w-full text-muted-foreground/30" />}
-                {scanState === "scanning" && (
+                <div className="relative h-64 w-full overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
+                  {isScanning ? (
                     <>
-                    <div className="scanline" />
-                    <Loader2 className="absolute inset-0 m-auto h-12 w-12 animate-spin text-primary" />
+                      <video ref={videoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
+                      <div className="scanline" />
                     </>
-                )}
-                {scanState === "success" && <CheckCircle className="absolute inset-0 m-auto h-24 w-24 text-green-500" />}
-                {scanState === "fail" && <XCircle className="absolute inset-0 m-auto h-24 w-24 text-destructive" />}
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                       {scanResult && <CheckCircle className="h-16 w-16 text-green-500" />}
+                       {scanError && <XCircle className="h-16 w-16 text-destructive" />}
+                      {!scanResult && !scanError && <QrCode className="h-16 w-16" />}
+                      <p className="text-center text-sm">
+                        {scanResult ? `Scanned: ${scanResult}` : scanError || "Ready to scan."}
+                      </p>
+                    </div>
+                  )}
                 </div>
-                <Button onClick={handleScanClick} disabled={scanState !== 'idle'} className="bg-accent hover:bg-accent/90">
-                {scanState === "idle" && <><QrCode className="mr-2 h-4 w-4" /> Scan Attendance</>}
-                {scanState === "scanning" && <>Scanning...</>}
-                {scanState === "success" && <>Scan Successful!</>}
-                {scanState === "fail" && <>Scan Failed</>}
-                </Button>
-                <p className={cn(
-                    "text-sm text-center h-5",
-                    scanState === 'success' && 'text-green-600',
-                    scanState === 'fail' && 'text-destructive',
-                    'text-muted-foreground'
-                )}>
-                    {scanMessage}
-                </p>
+                
+                {!isScanning ? (
+                    <Button onClick={startScan} className="bg-accent hover:bg-accent/90">
+                        <Video className="mr-2 h-4 w-4" /> Start Camera
+                    </Button>
+                ) : (
+                    <Button onClick={stopScan} variant="destructive">
+                        <VideoOff className="mr-2 h-4 w-4" /> Stop Camera
+                    </Button>
+                )}
+
+                {hasCameraPermission === false && (
+                    <Alert variant="destructive">
+                        <AlertTitle>Camera Access Denied</AlertTitle>
+                        <AlertDescription>
+                        Please allow camera access in your browser settings to use this feature.
+                        </AlertDescription>
+                    </Alert>
+                )}
             </CardContent>
             </Card>
         )}
@@ -154,4 +214,3 @@ export default function QrPage() {
     </div>
   );
 }
-
