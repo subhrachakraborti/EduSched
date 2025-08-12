@@ -51,16 +51,20 @@ export async function recordAttendanceAction(
     markerId: string
 ): Promise<{ studentName?: string; error?: string }> {
     try {
-        const parts = qrData.split('-');
-        if (parts.length < 4) { // studentId, YYYY, MM, DD, subject...
+        // Use a regular expression to reliably parse the QR code data.
+        // It captures:
+        // 1. The student ID (anything before the first date-like pattern)
+        // 2. The date (YYYY-MM-DD)
+        // 3. The subject code (everything after the date)
+        const match = qrData.match(/^(.+?)-(\d{4}-\d{2}-\d{2})-(.+)$/);
+
+        if (!match) {
             return { error: 'Invalid QR code format.' };
         }
-        
-        const studentId = parts[0];
-        const date = `${parts[1]}-${parts[2]}-${parts[3]}`;
-        const subject = parts.slice(4).join('-');
 
-        if (!studentId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !subject) {
+        const [, studentId, date, subject] = match;
+
+        if (!studentId || !date || !subject) {
             return { error: 'Invalid QR code data.' };
         }
 
@@ -118,5 +122,3 @@ export async function recordAttendanceAction(
         return { error: 'An unexpected error occurred while recording attendance.' };
     }
 }
-
-    

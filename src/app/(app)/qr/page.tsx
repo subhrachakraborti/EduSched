@@ -106,9 +106,8 @@ export default function QrPage() {
     }
     scannedCodesThisSession.current.add(data);
 
-    // More robust check for student QR code format: studentId-YYYY-MM-DD-subject
-    const parts = data.split('-');
-    const isStudentQR = parts.length >= 4 && !isNaN(Date.parse(`${parts[1]}-${parts[2]}-${parts[3]}`));
+    // Use a regex to check for the student QR code format: studentId-YYYY-MM-DD-subject
+    const isStudentQR = /^(.+?)-(\d{4}-\d{2}-\d{2})-(.+)$/.test(data);
 
     if (!isStudentQR) {
       setScannedResults(prev => [...prev, { type: 'info', message: `Scanned non-student QR. Ignoring.` }]);
@@ -318,5 +317,3 @@ export default function QrPage() {
     </div>
   );
 }
-
-    
