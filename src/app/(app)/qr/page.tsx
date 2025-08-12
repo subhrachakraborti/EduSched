@@ -12,6 +12,7 @@ import { useSchedule } from "@/context/schedule-context";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import jsQR from "jsqr";
+import { recordAttendanceAction } from "@/app/actions";
 
 export default function QrPage() {
   const { user } = useSchedule();
@@ -25,14 +26,17 @@ export default function QrPage() {
 
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<string | null>(null);
+  const [lastScannedResult, setLastScannedResult] = useState<string | null>(null);
+  const [scannedCodes, setScannedCodes] = useState<string[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
 
   const handleGenerateQr = () => {
     let dataToEncode = "";
     if (user?.type === 'student') {
       const today = new Date().toISOString().slice(0, 10);
-      dataToEncode = `${user.id}-${today}`;
+      // For now, let's use a placeholder subject. This will be updated later.
+      const subject = "SUB101";
+      dataToEncode = `${user.id}-${today}-${subject}`;
     } else {
       dataToEncode = qrInput.trim();
     }
@@ -45,13 +49,15 @@ export default function QrPage() {
   useEffect(() => {
     if (user?.type === 'student') {
       const today = new Date().toISOString().slice(0, 10);
-      const dataToEncode = `${user.id}-${today}`;
+      const subject = "SUB101"; // Placeholder
+      const dataToEncode = `${user.id}-${today}-${subject}`;
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
     }
   }, [user]);
 
   const startScan = async () => {
-    setScanResult(null);
+    setLastScannedResult(null);
+    setScannedCodes([]);
     setScanError(null);
     setIsScanning(true);
     
@@ -82,6 +88,30 @@ export default function QrPage() {
     }
   };
 
+  const handleScan = async (data: string) => {
+    if (scannedCodes.includes(data)) {
+        return; // Already scanned this session
+    }
+
+    setLastScannedResult(data);
+    setScannedCodes(prev => [...prev, data]);
+    
+    const result = await recordAttendanceAction(data);
+
+    if (result.error) {
+        toast({
+            variant: "destructive",
+            title: "Attendance Error",
+            description: result.error,
+        });
+    } else {
+        toast({
+            title: "Attendance Recorded!",
+            description: result.message,
+        });
+    }
+  }
+
   useEffect(() => {
     if (!isScanning || !hasCameraPermission) return;
 
@@ -104,14 +134,11 @@ export default function QrPage() {
           inversionAttempts: "dontInvert",
         });
 
-        if (code) {
-          setScanResult(code.data);
-          stopScan();
-          toast({ title: "QR Code Scanned!", description: `Data: ${code.data}` });
-        } else {
-          animationFrameId = requestAnimationFrame(tick);
+        if (code && code.data && code.data !== lastScannedResult) {
+          handleScan(code.data);
         }
-      } else {
+      }
+      if (isScanning) {
         animationFrameId = requestAnimationFrame(tick);
       }
     };
@@ -122,7 +149,7 @@ export default function QrPage() {
       cancelAnimationFrame(animationFrameId);
       stopScan();
     };
-  }, [isScanning, hasCameraPermission, toast]);
+  }, [isScanning, hasCameraPermission, toast, lastScannedResult]);
 
   return (
     <div className="space-y-6">
@@ -140,7 +167,7 @@ export default function QrPage() {
              {user?.type !== 'student' && (
                 <div className="flex gap-2">
                 <Input
-                    placeholder="Enter Student/Teacher ID"
+                    placeholder="Enter data to encode"
                     value={qrInput}
                     onChange={(e) => setQrInput(e.target.value)}
                 />
@@ -168,7 +195,7 @@ export default function QrPage() {
             <Card>
             <CardHeader>
                 <CardTitle>Attendance Scanner</CardTitle>
-                <CardDescription>Scan a QR code to mark attendance.</CardDescription>
+                <CardDescription>Scan a QR code to mark attendance. The camera will scan continuously.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center space-y-4">
                 <div className="relative h-64 w-full overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
@@ -176,14 +203,15 @@ export default function QrPage() {
                     <>
                       <video ref={videoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
                       <div className="scanline" />
+                      {lastScannedResult && <div className="absolute bottom-2 left-2 right-2 rounded-md bg-black/50 p-2 text-white text-center text-sm backdrop-blur-sm">Last scan: {lastScannedResult}</div>}
                     </>
                   ) : (
                     <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
-                       {scanResult && <CheckCircle className="h-16 w-16 text-green-500" />}
+                       {lastScannedResult && <CheckCircle className="h-16 w-16 text-green-500" />}
                        {scanError && <XCircle className="h-16 w-16 text-destructive" />}
-                      {!scanResult && !scanError && <QrCode className="h-16 w-16" />}
+                      {!lastScannedResult && !scanError && <QrCode className="h-16 w-16" />}
                       <p className="text-center text-sm">
-                        {scanResult ? `Scanned: ${scanResult}` : scanError || "Ready to scan."}
+                        {lastScannedResult ? `Last Scanned: ${lastScannedResult}` : scanError || "Ready to scan."}
                       </p>
                     </div>
                   )}
@@ -198,14 +226,23 @@ export default function QrPage() {
                         <VideoOff className="mr-2 h-4 w-4" /> Stop Camera
                     </Button>
                 )}
-
-                {hasCameraPermission === false && (
+                
+                 {hasCameraPermission === false && (
                     <Alert variant="destructive">
                         <AlertTitle>Camera Access Denied</AlertTitle>
                         <AlertDescription>
                         Please allow camera access in your browser settings to use this feature.
                         </AlertDescription>
                     </Alert>
+                )}
+
+                {scannedCodes.length > 0 && (
+                  <div className="w-full">
+                    <h4 className="font-semibold">Scanned this session:</h4>
+                    <ul className="max-h-24 overflow-y-auto rounded-md border p-2 text-sm text-muted-foreground">
+                      {scannedCodes.map((code, i) => <li key={i}>{code}</li>)}
+                    </ul>
+                  </div>
                 )}
             </CardContent>
             </Card>
@@ -214,3 +251,5 @@ export default function QrPage() {
     </div>
   );
 }
+
+    

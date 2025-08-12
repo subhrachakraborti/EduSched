@@ -42,3 +42,12 @@ export interface ScheduleEntry {
   classroom: string;
   studentGroup: string;
 }
+
+export interface AttendanceEntry {
+    studentId: string;
+    date: string;
+    subject: string;
+    timestamp: string;
+}
+
+    
