@@ -1,4 +1,20 @@
-
-[]
-
-    
+[
+  {
+    "studentId": "student001",
+    "date": "2025-08-12",
+    "subject": "Phys201",
+    "timestamp": "2025-08-12T15:16:27.486Z"
+  },
+  {
+    "studentId": "student001",
+    "date": "2025-08-12",
+    "subject": "Math101",
+    "timestamp": "2025-08-12T15:16:34.880Z"
+  },
+  {
+    "studentId": "student002",
+    "date": "2025-08-12",
+    "subject": "Bio101",
+    "timestamp": "2025-08-12T15:16:53.364Z"
+  }
+]

@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from "react";
@@ -21,9 +22,11 @@ import type { ScheduleEntry } from "@/lib/types";
 function EditableCell({
   value: initialValue,
   onSave,
+  isEditable,
 }: {
   value: string;
   onSave: (value: string) => void;
+  isEditable: boolean;
 }) {
   const [value, setValue] = useState(initialValue);
   const [isEditing, setIsEditing] = useState(false);
@@ -42,7 +45,7 @@ function EditableCell({
     }
   };
 
-  if (isEditing) {
+  if (isEditing && isEditable) {
     return (
       <Input
         value={value}
@@ -57,8 +60,8 @@ function EditableCell({
 
   return (
     <div
-      onClick={() => setIsEditing(true)}
-      className="min-h-[2rem] w-full cursor-pointer rounded-md p-2 hover:bg-muted"
+      onClick={() => isEditable && setIsEditing(true)}
+      className={`min-h-[2rem] w-full rounded-md p-2 ${isEditable ? 'cursor-pointer hover:bg-muted' : ''}`}
     >
       {value}
     </div>
@@ -66,11 +69,13 @@ function EditableCell({
 }
 
 export default function DashboardPage() {
-  const { schedule, isLoading, updateScheduleEntry } = useSchedule();
+  const { user, schedule, isLoading, updateScheduleEntry } = useSchedule();
 
   const handleCellSave = (id: string, field: keyof ScheduleEntry, value: string) => {
     updateScheduleEntry(id, field, value);
   };
+
+  const isEditable = user?.type === 'student' || user?.type === 'teacher';
 
   const renderSchedule = () => {
     if (isLoading) {
@@ -115,22 +120,22 @@ export default function DashboardPage() {
             {schedule.map((entry) => (
               <TableRow key={entry.id}>
                 <TableCell>
-                  <EditableCell value={entry.day} onSave={(v) => handleCellSave(entry.id, 'day', v)} />
+                  <EditableCell value={entry.day} onSave={(v) => handleCellSave(entry.id, 'day', v)} isEditable={isEditable} />
                 </TableCell>
                 <TableCell>
-                  <EditableCell value={entry.time} onSave={(v) => handleCellSave(entry.id, 'time', v)} />
+                  <EditableCell value={entry.time} onSave={(v) => handleCellSave(entry.id, 'time', v)} isEditable={isEditable} />
                 </TableCell>
                 <TableCell>
-                  <EditableCell value={entry.course} onSave={(v) => handleCellSave(entry.id, 'course', v)} />
+                  <EditableCell value={entry.course} onSave={(v) => handleCellSave(entry.id, 'course', v)} isEditable={isEditable} />
                 </TableCell>
                 <TableCell>
-                  <EditableCell value={entry.teacher} onSave={(v) => handleCellSave(entry.id, 'teacher', v)} />
+                  <EditableCell value={entry.teacher} onSave={(v) => handleCellSave(entry.id, 'teacher', v)} isEditable={isEditable} />
                 </TableCell>
                 <TableCell>
-                  <EditableCell value={entry.classroom} onSave={(v) => handleCellSave(entry.id, 'classroom', v)} />
+                  <EditableCell value={entry.classroom} onSave={(v) => handleCellSave(entry.id, 'classroom', v)} isEditable={isEditable} />
                 </TableCell>
                 <TableCell>
-                  <EditableCell value={entry.studentGroup} onSave={(v) => handleCellSave(entry.id, 'studentGroup', v)} />
+                  <EditableCell value={entry.studentGroup} onSave={(v) => handleCellSave(entry.id, 'studentGroup', v)} isEditable={isEditable} />
                 </TableCell>
               </TableRow>
             ))}
