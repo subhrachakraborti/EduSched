@@ -13,22 +13,13 @@ import jsQR from "jsqr";
 import { recordAttendanceAction } from "@/app/actions";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import allSubjectsData from "@/lib/subjects.json";
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
-
-type Subject = {
-  code: string;
-  name: string;
-};
 
 type ScannedResult = {
   type: 'success' | 'error' | 'info';
   message: string;
 }
-
-// Flatten all subjects from the JSON file for easy lookup
-const allSubjects: Subject[] = Object.values(allSubjectsData).flat();
 
 export default function QrPage() {
   const { user } = useSchedule();
@@ -36,7 +27,6 @@ export default function QrPage() {
   
   const [selectedSubject, setSelectedSubject] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
-  const [userSubjects, setUserSubjects] = useState<Subject[]>([]);
   const [sessionAttendees, setSessionAttendees] = useState<string[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -48,12 +38,7 @@ export default function QrPage() {
   const scannedCodesThisSession = useRef(new Set<string>());
   
   useEffect(() => {
-    if (user?.type === 'student' && user.subjects) {
-      const studentSubjectDetails = allSubjects.filter(subject => 
-        user.subjects?.includes(subject.code)
-      );
-      setUserSubjects(studentSubjectDetails);
-    } else if (user?.type === 'teacher') {
+    if (user?.type === 'teacher') {
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(user.id)}`);
     }
   }, [user]);
@@ -275,9 +260,9 @@ export default function QrPage() {
                   <SelectValue placeholder="Select a subject" />
                 </SelectTrigger>
                 <SelectContent>
-                  {userSubjects.length > 0 ? (
-                    userSubjects.map(sub => (
-                      <SelectItem key={sub.code} value={sub.code}>{sub.name}</SelectItem>
+                  {(user?.subjects && user.subjects.length > 0) ? (
+                    user.subjects.map(subjectCode => (
+                      <SelectItem key={subjectCode} value={subjectCode}>{subjectCode}</SelectItem>
                     ))
                   ) : (
                     <SelectItem value="none" disabled>No subjects assigned</SelectItem>
@@ -285,7 +270,7 @@ export default function QrPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleGenerateStudentQr} disabled={!selectedSubject || userSubjects.length === 0} className="w-full bg-accent hover:bg-accent/90">Generate QR Code</Button>
+            <Button onClick={handleGenerateStudentQr} disabled={!selectedSubject || !user?.subjects || user.subjects.length === 0} className="w-full bg-accent hover:bg-accent/90">Generate QR Code</Button>
             {qrCodeUrl && (
               <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
                 <Image src={qrCodeUrl} alt="Generated QR Code" width={200} height={200} className="rounded-md" />
@@ -321,11 +306,9 @@ export default function QrPage() {
       <h1 className="text-2xl font-bold md:text-3xl">QR Tools</h1>
       <canvas ref={canvasRef} style={{ display: "none" }} />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {renderScanner()}
         {renderQrGenerator()}
+        {renderScanner()}
       </div>
     </div>
   );
 }
-
-    
