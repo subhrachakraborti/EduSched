@@ -5,6 +5,7 @@ import { generateSchedule } from '@/ai/flows/generate-schedule';
 import type { ScheduleEntry, User } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { getFirebaseAdmin } from '@/lib/firebase-admin';
+import { parse } from 'date-fns';
 
 export async function generateTimetableAction(
   courses: string[],
@@ -52,17 +53,23 @@ export async function recordAttendanceAction(
     markerId: string
 ): Promise<{ studentName?: string; error?: string }> {
     try {
-        const match = qrData.match(/^(.+?)-(\d{4}-\d{2}-\d{2})-(.+)$/);
-
+        const match = qrData.match(/^([^.]+)\.(\d{6})\.(.+)$/);
+        
         if (!match) {
             return { error: 'Invalid QR code format.' };
         }
 
-        const [, studentId, date, subject] = match;
+        const [, studentId, dateStr, subject] = match;
 
-        if (!studentId || !date || !subject) {
+        if (!studentId || !dateStr || !subject) {
             return { error: 'Invalid QR code data.' };
         }
+        
+        const parsedDate = parse(dateStr, 'ddMMyy', new Date());
+        if (isNaN(parsedDate.getTime())) {
+            return { error: 'Invalid date format in QR code.'};
+        }
+        const dateForDb = parsedDate.toISOString().split('T')[0]; // Format as YYYY-MM-DD
 
         const { data: studentData, error: studentError } = await supabase
             .from('users')
@@ -81,7 +88,7 @@ export async function recordAttendanceAction(
             .from('attendance')
             .select('id')
             .eq('student_id', studentId)
-            .eq('date', date)
+            .eq('date', dateForDb)
             .eq('subject_code', subject)
             .limit(1);
 
@@ -98,7 +105,7 @@ export async function recordAttendanceAction(
             .from('attendance')
             .insert({
                 student_id: studentId,
-                date: date,
+                date: dateForDb,
                 subject_code: subject,
                 marked_by: markerId,
             });
@@ -169,7 +176,5 @@ export async function createUserAction(
     return { error: errorMessage };
   }
 }
-
-    
 
     

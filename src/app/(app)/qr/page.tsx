@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import subjects from "@/lib/subjects.json";
 import { cn } from "@/lib/utils";
+import { format } from 'date-fns';
 
 type Subject = {
   code: string;
@@ -44,19 +45,22 @@ export default function QrPage() {
   const scannedCodesThisSession = useRef(new Set<string>());
   
   useEffect(() => {
-    if (user?.type === 'student' && user.group) {
-      const studentGroup = user.group as keyof typeof subjects;
-      setUserSubjects(subjects[studentGroup] || []);
+    if (user?.type === 'student' && user.subjects) {
+      // Assuming subjects are stored as an array of codes in the user object now.
+      // We need to find the matching subject names from our subjects.json
+      const allSubjects = Object.values(subjects).flat();
+      const studentSubjects = allSubjects.filter(s => user.subjects?.includes(s.code));
+      setUserSubjects(studentSubjects);
     } else if (user?.type === 'teacher') {
-        // Teacher has a static ID code
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(user.id)}`);
     }
   }, [user]);
 
   const handleGenerateStudentQr = () => {
     if (user?.type === 'student' && selectedSubject) {
-      const today = new Date().toISOString().slice(0, 10);
-      const dataToEncode = `${user.id}-${today}-${selectedSubject}`;
+      const today = new Date();
+      const dateString = format(today, 'ddMMyy');
+      const dataToEncode = `${user.id}.${dateString}.${selectedSubject}`;
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
     } else {
         toast({
@@ -106,8 +110,8 @@ export default function QrPage() {
     }
     scannedCodesThisSession.current.add(data);
 
-    // Use a regex to check for the student QR code format: studentId-YYYY-MM-DD-subject
-    const isStudentQR = /^(.+?)-(\d{4}-\d{2}-\d{2})-(.+)$/.test(data);
+    // Use a regex to check for the new student QR code format: <firebaseid>.ddmmyy.<subject>
+    const isStudentQR = /^([^.]+)\.(\d{6})\.(.+)$/.test(data);
 
     if (!isStudentQR) {
       setScannedResults(prev => [...prev, { type: 'info', message: `Scanned non-student QR. Ignoring.` }]);
@@ -317,3 +321,5 @@ export default function QrPage() {
     </div>
   );
 }
+
+    

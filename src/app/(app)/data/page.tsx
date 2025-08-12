@@ -199,7 +199,7 @@ function UserManagementSection() {
                     
                     <div className="space-y-2">
                         <Label htmlFor="subjects">Subjects</Label>
-                        <Input id="subjects" {...register("subjects")} placeholder="Comma-separated, e.g., Math101,Phys201" />
+                        <Input id="subjects" {...register("subjects")} placeholder="Comma-separated, e.g., Mathematics,Physics" />
                         {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
                     </div>
 
