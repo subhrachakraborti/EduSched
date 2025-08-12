@@ -4,6 +4,7 @@
 import { generateSchedule } from '@/ai/flows/generate-schedule';
 import type { ScheduleEntry, User } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
+import { getFirebaseAdmin } from '@/lib/firebase-admin';
 
 export async function generateTimetableAction(
   courses: string[],
@@ -51,11 +52,6 @@ export async function recordAttendanceAction(
     markerId: string
 ): Promise<{ studentName?: string; error?: string }> {
     try {
-        // Use a regular expression to reliably parse the QR code data.
-        // It captures:
-        // 1. The student ID (anything before the first date-like pattern)
-        // 2. The date (YYYY-MM-DD)
-        // 3. The subject code (everything after the date)
         const match = qrData.match(/^(.+?)-(\d{4}-\d{2}-\d{2})-(.+)$/);
 
         if (!match) {
@@ -68,7 +64,6 @@ export async function recordAttendanceAction(
             return { error: 'Invalid QR code data.' };
         }
 
-        // 1. Check if student exists and get their name
         const { data: studentData, error: studentError } = await supabase
             .from('users')
             .select('name')
@@ -82,7 +77,6 @@ export async function recordAttendanceAction(
         }
         const studentName = studentData.name;
 
-        // 2. Check if attendance is already recorded
         const { data: existingAttendance, error: checkError } = await supabase
             .from('attendance')
             .select('id')
@@ -100,7 +94,6 @@ export async function recordAttendanceAction(
             return { error: `Attendance for ${studentName} already recorded.` };
         }
 
-        // 3. Insert new attendance record
         const { error: insertError } = await supabase
             .from('attendance')
             .insert({
@@ -121,4 +114,58 @@ export async function recordAttendanceAction(
         console.error('Failed to record attendance:', e);
         return { error: 'An unexpected error occurred while recording attendance.' };
     }
+}
+
+export async function createUserAction(
+  userData: Omit<User, 'id'> & { email: string; password?: string }
+): Promise<{ user?: User; error?: string }> {
+  try {
+    if (!userData.password) {
+      return { error: "Password is required." };
+    }
+
+    const admin = await getFirebaseAdmin();
+    const auth = admin.auth();
+
+    // 1. Create user in Firebase Auth
+    const firebaseUser = await auth.createUser({
+      email: userData.email,
+      password: userData.password,
+      displayName: userData.name,
+    });
+    
+    const newUser: User = {
+        id: firebaseUser.uid,
+        name: userData.name,
+        dob: userData.dob,
+        type: userData.type,
+        subjects: userData.type === 'teacher' ? userData.subjects?.split(',').map(s => s.trim()) : undefined,
+        group: userData.type === 'student' ? userData.group : undefined,
+    };
+
+    // 2. Insert user data into Supabase
+    const { error: supabaseError } = await supabase
+      .from('users')
+      .insert(newUser);
+
+    if (supabaseError) {
+      // If Supabase insert fails, we should delete the user from Firebase Auth
+      // to avoid orphaned auth accounts.
+      await auth.deleteUser(firebaseUser.uid);
+      console.error("Supabase user creation error:", supabaseError);
+      return { error: "Failed to save user profile to database." };
+    }
+
+    return { user: newUser };
+
+  } catch (error: any) {
+    console.error("Create user error:", error);
+    let errorMessage = "An unexpected error occurred during user creation.";
+    if (error.code === 'auth/email-already-exists') {
+        errorMessage = "An account with this email address already exists.";
+    } else if (error.code === 'auth/invalid-password') {
+        errorMessage = "The password is not strong enough. It must be at least 6 characters.";
+    }
+    return { error: errorMessage };
+  }
 }

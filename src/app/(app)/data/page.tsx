@@ -1,18 +1,24 @@
 
 "use client";
 
-import React, { useMemo } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import React, { useMemo, useState } from 'react';
+import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import { useSchedule } from '@/context/schedule-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Book, School, Users, Clock, UsersRound, Trash2, Loader2, FileWarning } from 'lucide-react';
+import { Book, School, Users, Clock, UsersRound, Trash2, Loader2, FileWarning, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { generateTimetableAction } from '@/app/actions';
+import { generateTimetableAction, createUserAction } from '@/app/actions';
 import { useRouter } from 'next/navigation';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { cn } from '@/lib/utils';
+import { Separator } from '@/components/ui/separator';
 
 type InputForm = {
   name: string;
@@ -21,6 +27,34 @@ type InputForm = {
 type SlotForm = {
   slot: string;
 }
+
+const userSchema = z.object({
+  email: z.string().email({ message: "Invalid email address." }),
+  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  name: z.string().min(2, { message: "Name must be at least 2 characters." }),
+  dob: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date format." }),
+  type: z.enum(["student", "teacher"]),
+  subjects: z.string().optional(),
+  group: z.string().optional(),
+}).refine(data => {
+    if (data.type === 'teacher' && !data.subjects) {
+      return false;
+    }
+    return true;
+}, {
+    message: "Subjects are required for teachers.",
+    path: ["subjects"],
+}).refine(data => {
+    if (data.type === 'student' && !data.group) {
+        return false;
+    }
+    return true;
+}, {
+    message: "Group is required for students.",
+    path: ["group"],
+});
+
+type UserFormData = z.infer<typeof userSchema>;
 
 interface DataSectionProps<T extends { id: string; name: string } | { id: string; slot: string }> {
   title: string;
@@ -74,6 +108,126 @@ function DataSection<T extends { id: string; name: string } | { id: string; slot
       </CardContent>
     </Card>
   );
+}
+
+function UserManagementSection() {
+    const { toast } = useToast();
+    const [isCreatingUser, setIsCreatingUser] = useState(false);
+    const {
+        register,
+        handleSubmit,
+        watch,
+        control,
+        reset,
+        formState: { errors },
+    } = useForm<UserFormData>({
+        resolver: zodResolver(userSchema),
+        defaultValues: { type: "student" }
+    });
+    
+    const userType = watch("type");
+
+    const onUserSubmit: SubmitHandler<UserFormData> = async (data) => {
+        setIsCreatingUser(true);
+        const result = await createUserAction(data);
+        if (result.error) {
+            toast({
+                variant: 'destructive',
+                title: 'User Creation Failed',
+                description: result.error,
+            });
+        } else {
+            toast({
+                title: 'User Created Successfully!',
+                description: `User ${result.user?.name} has been created.`,
+            });
+            reset();
+        }
+        setIsCreatingUser(false);
+    }
+    
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex items-center gap-2">
+                  <UserPlus className="h-5 w-5" />
+                  <CardTitle>User Management</CardTitle>
+                </div>
+                <CardDescription>Create new student or teacher accounts.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit(onUserSubmit)} className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input id="email" type="email" {...register("email")} />
+                             {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+                        </div>
+                        <div className="space-y-2">
+                             <Label htmlFor="password">Password</Label>
+                            <Input id="password" type="password" {...register("password")} />
+                             {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+                        </div>
+                         <div className="space-y-2">
+                             <Label htmlFor="name">Full Name</Label>
+                            <Input id="name" {...register("name")} />
+                             {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+                        </div>
+                         <div className="space-y-2">
+                             <Label htmlFor="dob">Date of Birth</Label>
+                            <Input id="dob" type="date" {...register("dob")} />
+                             {errors.dob && <p className="text-sm text-destructive">{errors.dob.message}</p>}
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <Label>User Type</Label>
+                         <Controller
+                            name="type"
+                            control={control}
+                            render={({ field }) => (
+                                <RadioGroup
+                                    onValueChange={field.onChange}
+                                    defaultValue={field.value}
+                                    className="flex items-center gap-4"
+                                >
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="student" id="student" />
+                                        <Label htmlFor="student">Student</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="teacher" id="teacher" />
+                                        <Label htmlFor="teacher">Teacher</Label>
+                                    </div>
+                                </RadioGroup>
+                            )}
+                        />
+                    </div>
+                    
+                    {userType === 'student' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="group">Student Group</Label>
+                            <Input id="group" {...register("group")} placeholder="e.g., Group A" />
+                            {errors.group && <p className="text-sm text-destructive">{errors.group.message}</p>}
+                        </div>
+                    )}
+
+                    {userType === 'teacher' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="subjects">Subjects</Label>
+                            <Input id="subjects" {...register("subjects")} placeholder="Comma-separated, e.g., Math101,Phys201" />
+                            {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
+                        </div>
+                    )}
+
+                    <Button type="submit" disabled={isCreatingUser}>
+                        {isCreatingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Create User
+                    </Button>
+                </form>
+            </CardContent>
+        </Card>
+    );
 }
 
 export default function DataManagementPage() {
@@ -145,6 +299,10 @@ export default function DataManagementPage() {
           Generate Timetable
         </Button>
       </div>
+      
+      <UserManagementSection />
+
+      <Separator />
 
       <Tabs defaultValue="courses" className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
