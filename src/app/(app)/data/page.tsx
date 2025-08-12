@@ -300,10 +300,6 @@ export default function DataManagementPage() {
         </Button>
       </div>
       
-      <UserManagementSection />
-
-      <Separator />
-
       <Tabs defaultValue="courses" className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
           <TabsTrigger value="courses">Courses</TabsTrigger>
@@ -328,6 +324,11 @@ export default function DataManagementPage() {
           <DataSection title="Student Groups" Icon={UsersRound} data={studentGroups} onAdd={addStudentGroup} onRemove={removeStudentGroup} formType="name" />
         </TabsContent>
       </Tabs>
+      
+      <Separator />
+
+      <UserManagementSection />
+
     </div>
   );
 }
