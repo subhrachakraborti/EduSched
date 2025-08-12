@@ -44,10 +44,10 @@ export interface ScheduleEntry {
 }
 
 export interface AttendanceEntry {
-    studentId: string;
-    date: string;
-    subject: string;
-    timestamp: string;
+  id?: number;
+  student_id: string;
+  date: string; // YYYY-MM-DD
+  subject_code: string;
+  marked_by: string; // Firebase UID of admin/teacher
+  created_at?: string;
 }
-
-    

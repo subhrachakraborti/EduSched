@@ -2,9 +2,8 @@
 'use server';
 
 import { generateSchedule } from '@/ai/flows/generate-schedule';
-import type { ScheduleEntry, AttendanceEntry } from '@/lib/types';
-import { promises as fs } from 'fs';
-import path from 'path';
+import type { ScheduleEntry, User } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
 
 export async function generateTimetableAction(
   courses: string[],
@@ -48,12 +47,12 @@ export async function generateTimetableAction(
 }
 
 export async function recordAttendanceAction(
-    qrData: string
-): Promise<{ message?: string; error?: string }> {
+    qrData: string,
+    markerId: string
+): Promise<{ studentName?: string; error?: string }> {
     try {
         const parts = qrData.split('-');
-        // studentId-YYYY-MM-DD-SubjectCode
-        if (parts.length < 5) {
+        if (parts.length < 3) {
             return { error: 'Invalid QR code format.' };
         }
         
@@ -61,40 +60,56 @@ export async function recordAttendanceAction(
         const date = `${parts[1]}-${parts[2]}-${parts[3]}`;
         const subject = parts.slice(4).join('-');
 
-        if (!studentId || !date || !subject) {
+        if (!studentId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !subject) {
             return { error: 'Invalid QR code data.' };
         }
 
-        const filePath = path.join(process.cwd(), 'src', 'lib', 'attendance.json');
+        // 1. Check if student exists and get their name
+        const { data: studentData, error: studentError } = await supabase
+            .from('users')
+            .select('name')
+            .eq('id', studentId)
+            .eq('type', 'student')
+            .single();
+
+        if (studentError || !studentData) {
+            return { error: 'Student not found.' };
+        }
+        const studentName = studentData.name;
+
+        // 2. Check if attendance is already recorded
+        const { data: existingAttendance, error: checkError } = await supabase
+            .from('attendance')
+            .select('id')
+            .eq('student_id', studentId)
+            .eq('date', date)
+            .eq('subject_code', subject);
+
+        if (checkError) {
+            console.error('Error checking attendance:', checkError);
+            return { error: 'Failed to check existing attendance.' };
+        }
+
+        if (existingAttendance && existingAttendance.length > 0) {
+            return { error: `Attendance for ${studentName} already recorded.` };
+        }
+
+        // 3. Insert new attendance record
+        const { error: insertError } = await supabase
+            .from('attendance')
+            .insert({
+                student_id: studentId,
+                date: date,
+                subject_code: subject,
+                marked_by: markerId,
+            });
         
-        let attendanceData: AttendanceEntry[] = [];
-        try {
-            const fileContent = await fs.readFile(filePath, 'utf-8');
-            attendanceData = JSON.parse(fileContent);
-        } catch (error) {
-            // File might not exist yet, which is fine.
+        if (insertError) {
+            console.error('Error inserting attendance:', insertError);
+            return { error: 'Failed to save attendance record.' };
         }
 
-        const alreadyExists = attendanceData.some(
-            entry => entry.studentId === studentId && entry.date === date && entry.subject === subject
-        );
-
-        if (alreadyExists) {
-            return { error: `Attendance for ${studentId} already recorded for this subject today.` };
-        }
-
-        const newEntry: AttendanceEntry = {
-            studentId,
-            date,
-            subject,
-            timestamp: new Date().toISOString()
-        };
-
-        attendanceData.push(newEntry);
-
-        await fs.writeFile(filePath, JSON.stringify(attendanceData, null, 2), 'utf-8');
-
-        return { message: `Attendance for ${studentId} recorded.` };
+        return { studentName: studentName };
 
     } catch (e) {
         console.error('Failed to record attendance:', e);

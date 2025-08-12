@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, ScanLine, Video, VideoOff } from "lucide-react";
+import { QrCode, ScanLine, Video, VideoOff, Download } from "lucide-react";
 import { useSchedule } from "@/context/schedule-context";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -33,6 +33,7 @@ export default function QrPage() {
   const [selectedSubject, setSelectedSubject] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [userSubjects, setUserSubjects] = useState<Subject[]>([]);
+  const [sessionAttendees, setSessionAttendees] = useState<string[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,6 +48,7 @@ export default function QrPage() {
       const studentGroup = user.group as keyof typeof subjects;
       setUserSubjects(subjects[studentGroup] || []);
     } else if (user?.type === 'teacher') {
+        // Teacher has a static ID code
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(user.id)}`);
     }
   }, [user]);
@@ -68,6 +70,7 @@ export default function QrPage() {
   const startScan = async () => {
     scannedCodesThisSession.current.clear();
     setScannedResults([]);
+    setSessionAttendees([]); // Clear attendees for new session
     setIsScanning(true);
     
     try {
@@ -98,35 +101,44 @@ export default function QrPage() {
   };
 
   const handleScan = async (data: string) => {
-    if (scannedCodesThisSession.current.has(data)) {
-        return; // Already scanned this session
+    if (scannedCodesThisSession.current.has(data) || !user) {
+        return; 
     }
     scannedCodesThisSession.current.add(data);
 
     const parts = data.split('-');
-    // Expecting studentId, YYYY-MM-DD, subjectCode
     if (parts.length < 3) {
-      setScannedResults(prev => [...prev, { type: 'info', message: `Scanned non-student QR: ${data}` }]);
+      setScannedResults(prev => [...prev, { type: 'info', message: `Scanned non-student QR. Ignoring.` }]);
       return;
     }
     
-    const result = await recordAttendanceAction(data);
+    const result = await recordAttendanceAction(data, user.id);
 
     if (result.error) {
       setScannedResults(prev => [...prev, { type: 'error', message: result.error! }]);
-      toast({
-          variant: "destructive",
-          title: "Attendance Error",
-          description: result.error,
-      });
-    } else {
-      setScannedResults(prev => [...prev, { type: 'success', message: result.message! }]);
+    } else if (result.studentName) {
+      const successMessage = `Attendance recorded for ${result.studentName}.`
+      setScannedResults(prev => [...prev, { type: 'success', message: successMessage }]);
+      setSessionAttendees(prev => [...prev, result.studentName!]);
       toast({
           title: "Attendance Recorded!",
-          description: result.message,
+          description: successMessage,
       });
     }
   }
+
+  const downloadAttendance = () => {
+    const fileContent = sessionAttendees.join('\n');
+    const blob = new Blob([fileContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     if (!isScanning || !hasCameraPermission) return;
@@ -167,6 +179,77 @@ export default function QrPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScanning, hasCameraPermission]);
 
+  const renderScanner = () => {
+    if (user?.type === 'admin' || user?.type === 'teacher') {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>Attendance Scanner</CardTitle>
+            <CardDescription>Scan a student's QR code to mark attendance. The camera will scan continuously.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center space-y-4">
+            <div className="relative h-64 w-full overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
+              {isScanning ? (
+                <>
+                  <video ref={videoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
+                  <div className="scanline" />
+                </>
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                   <QrCode className="h-16 w-16" />
+                   <p className="text-center text-sm">Camera is off</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex w-full items-center justify-center gap-2">
+                {!isScanning ? (
+                    <Button onClick={startScan} className="flex-1 bg-accent hover:bg-accent/90">
+                        <Video className="mr-2 h-4 w-4" /> Start Camera
+                    </Button>
+                ) : (
+                    <Button onClick={stopScan} variant="destructive" className="flex-1">
+                        <VideoOff className="mr-2 h-4 w-4" /> Stop Camera
+                    </Button>
+                )}
+                 {sessionAttendees.length > 0 && (
+                    <Button onClick={downloadAttendance} variant="outline">
+                        <Download className="mr-2 h-4 w-4" /> Download
+                    </Button>
+                )}
+            </div>
+            
+             {hasCameraPermission === false && (
+                <Alert variant="destructive">
+                    <AlertTitle>Camera Access Denied</AlertTitle>
+                    <AlertDescription>
+                    Please allow camera access in your browser settings to use this feature.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {scannedResults.length > 0 && (
+              <div className="w-full">
+                <h4 className="font-semibold">Scanned this session:</h4>
+                <ul className="max-h-32 w-full overflow-y-auto rounded-md border p-2 text-sm">
+                  {scannedResults.map((result, i) => (
+                      <li key={i} className={cn(
+                        {'text-green-600': result.type === 'success'},
+                        {'text-red-600': result.type === 'error'},
+                        {'text-muted-foreground': result.type === 'info'}
+                      )}>
+                        {result.message}
+                      </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+    return null;
+  }
 
   const renderQrGenerator = () => {
     if (user?.type === 'student') {
@@ -220,71 +303,6 @@ export default function QrPage() {
     }
     return null;
   };
-
-  const renderScanner = () => {
-    if (user?.type === 'admin' || user?.type === 'teacher') {
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Attendance Scanner</CardTitle>
-            <CardDescription>Scan a student's QR code to mark attendance. The camera will scan continuously.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center justify-center space-y-4">
-            <div className="relative h-64 w-full overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
-              {isScanning ? (
-                <>
-                  <video ref={videoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
-                  <div className="scanline" />
-                </>
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
-                   <QrCode className="h-16 w-16" />
-                   <p className="text-center text-sm">Camera is off</p>
-                </div>
-              )}
-            </div>
-            
-            {!isScanning ? (
-                <Button onClick={startScan} className="bg-accent hover:bg-accent/90">
-                    <Video className="mr-2 h-4 w-4" /> Start Camera
-                </Button>
-            ) : (
-                <Button onClick={stopScan} variant="destructive">
-                    <VideoOff className="mr-2 h-4 w-4" /> Stop Camera
-                </Button>
-            )}
-            
-             {hasCameraPermission === false && (
-                <Alert variant="destructive">
-                    <AlertTitle>Camera Access Denied</AlertTitle>
-                    <AlertDescription>
-                    Please allow camera access in your browser settings to use this feature.
-                    </AlertDescription>
-                </Alert>
-            )}
-
-            {scannedResults.length > 0 && (
-              <div className="w-full">
-                <h4 className="font-semibold">Scanned this session:</h4>
-                <ul className="max-h-32 w-full overflow-y-auto rounded-md border p-2 text-sm">
-                  {scannedResults.map((result, i) => (
-                      <li key={i} className={cn(
-                        {'text-green-600': result.type === 'success'},
-                        {'text-red-600': result.type === 'error'},
-                        {'text-muted-foreground': result.type === 'info'}
-                      )}>
-                        {result.message}
-                      </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      );
-    }
-    return null;
-  }
 
   return (
     <div className="space-y-6">

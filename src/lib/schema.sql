@@ -1,4 +1,4 @@
--- Create Users table
+-- Create users table
 CREATE TABLE public.users (
   id TEXT PRIMARY KEY NOT NULL, -- Corresponds to Firebase Auth UID
   name TEXT NOT NULL,
@@ -8,26 +8,24 @@ CREATE TABLE public.users (
   "group" TEXT -- Student group name
 );
 
--- Create Timetable table
+-- Create timetable table
 CREATE TABLE public.timetable (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  day TEXT NOT NULL,
-  "time" TEXT NOT NULL,
-  course TEXT NOT NULL,
-  teacher_id TEXT REFERENCES public.users(id),
-  classroom TEXT NOT NULL,
-  student_group TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+    id SERIAL PRIMARY KEY,
+    day TEXT NOT NULL,
+    time_slot TEXT NOT NULL,
+    course_name TEXT NOT NULL,
+    teacher_id TEXT REFERENCES public.users(id),
+    classroom_name TEXT NOT NULL,
+    student_group TEXT NOT NULL
 );
 
--- Create Attendance table
+-- Create attendance table
 CREATE TABLE public.attendance (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id TEXT NOT NULL REFERENCES public.users(id),
-  "date" DATE NOT NULL,
-  subject_code TEXT NOT NULL,
-  is_present BOOLEAN NOT NULL DEFAULT true,
-  recorded_at TIMESTAMPTZ DEFAULT now(),
-  recorded_by_id TEXT REFERENCES public.users(id), -- Teacher or Admin who scanned
-  UNIQUE(student_id, "date", subject_code)
+    id SERIAL PRIMARY KEY,
+    student_id TEXT NOT NULL REFERENCES public.users(id),
+    date DATE NOT NULL,
+    subject_code TEXT NOT NULL,
+    marked_by TEXT NOT NULL REFERENCES public.users(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(student_id, date, subject_code)
 );
