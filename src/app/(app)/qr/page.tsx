@@ -20,6 +20,11 @@ type Subject = {
   name: string;
 };
 
+type ScannedResult = {
+  type: 'success' | 'error' | 'info';
+  message: string;
+}
+
 export default function QrPage() {
   const { user } = useSchedule();
   const { toast } = useToast();
@@ -33,14 +38,14 @@ export default function QrPage() {
 
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [scannedCodes, setScannedCodes] = useState<string[]>([]);
+  const [scannedResults, setScannedResults] = useState<ScannedResult[]>([]);
+  const scannedCodesThisSession = useRef(new Set<string>());
   
   useEffect(() => {
     if (user?.type === 'student' && user.group) {
       const studentGroup = user.group as keyof typeof subjects;
       setUserSubjects(subjects[studentGroup] || []);
     } else if (user?.type === 'teacher') {
-      // Teacher's static QR code
       setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(user.id)}`);
     }
   }, [user]);
@@ -60,7 +65,8 @@ export default function QrPage() {
   };
 
   const startScan = async () => {
-    setScannedCodes([]);
+    scannedCodesThisSession.current.clear();
+    setScannedResults([]);
     setIsScanning(true);
     
     try {
@@ -91,25 +97,32 @@ export default function QrPage() {
   };
 
   const handleScan = async (data: string) => {
-    if (scannedCodes.includes(data)) {
+    if (scannedCodesThisSession.current.has(data)) {
         return; // Already scanned this session
     }
+    scannedCodesThisSession.current.add(data);
 
-    setScannedCodes(prev => [...prev, data]);
+    const parts = data.split('-');
+    if (parts.length !== 3) {
+      setScannedResults(prev => [...prev, { type: 'info', message: `Scanned non-student QR: ${data}` }]);
+      return;
+    }
     
     const result = await recordAttendanceAction(data);
 
     if (result.error) {
-        toast({
-            variant: "destructive",
-            title: "Attendance Error",
-            description: result.error,
-        });
+      setScannedResults(prev => [...prev, { type: 'error', message: result.error! }]);
+      toast({
+          variant: "destructive",
+          title: "Attendance Error",
+          description: result.error,
+      });
     } else {
-        toast({
-            title: "Attendance Recorded!",
-            description: result.message,
-        });
+      setScannedResults(prev => [...prev, { type: 'success', message: result.message! }]);
+      toast({
+          title: "Attendance Recorded!",
+          description: result.message,
+      });
     }
   }
 
@@ -149,6 +162,7 @@ export default function QrPage() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScanning, hasCameraPermission]);
 
 
@@ -202,7 +216,7 @@ export default function QrPage() {
         </Card>
       );
     }
-    return null; // Admin has no QR code generator
+    return null;
   };
 
   const renderScanner = () => {
@@ -247,18 +261,19 @@ export default function QrPage() {
                 </Alert>
             )}
 
-            {scannedCodes.length > 0 && (
+            {scannedResults.length > 0 && (
               <div className="w-full">
                 <h4 className="font-semibold">Scanned this session:</h4>
-                <ul className="max-h-24 overflow-y-auto rounded-md border p-2 text-sm text-muted-foreground">
-                  {scannedCodes.map((code, i) => {
-                     try {
-                        const [studentId, , subject] = code.split('-');
-                        return <li key={i}>{studentId} - {subject}</li>;
-                      } catch (e) {
-                        return <li key={i}>Invalid code scanned</li>
-                      }
-                  })}
+                <ul className="max-h-32 w-full overflow-y-auto rounded-md border p-2 text-sm">
+                  {scannedResults.map((result, i) => (
+                      <li key={i} className={cn(
+                        {'text-green-600': result.type === 'success'},
+                        {'text-red-600': result.type === 'error'},
+                        {'text-muted-foreground': result.type === 'info'}
+                      )}>
+                        {result.message}
+                      </li>
+                  ))}
                 </ul>
               </div>
             )}
@@ -280,3 +295,5 @@ export default function QrPage() {
     </div>
   );
 }
+
+    
