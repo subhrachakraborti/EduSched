@@ -104,12 +104,18 @@ export default function QrPage() {
     scannedCodesThisSession.current.add(data);
 
     const parts = data.split('-');
-    if (parts.length !== 3) {
+    // Expecting studentId, YYYY, MM, DD, subjectCode -> 5 parts
+    if (parts.length < 5) {
       setScannedResults(prev => [...prev, { type: 'info', message: `Scanned non-student QR: ${data}` }]);
       return;
     }
     
-    const result = await recordAttendanceAction(data);
+    const studentId = parts[0];
+    const date = `${parts[1]}-${parts[2]}-${parts[3]}`;
+    const subject = parts.slice(4).join('-'); // handles subject codes with hyphens
+    const reconstructedData = `${studentId}-${date}-${subject}`;
+
+    const result = await recordAttendanceAction(reconstructedData);
 
     if (result.error) {
       setScannedResults(prev => [...prev, { type: 'error', message: result.error! }]);
