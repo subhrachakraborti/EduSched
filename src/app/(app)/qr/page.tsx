@@ -14,6 +14,7 @@ import { recordAttendanceAction } from "@/app/actions";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import subjects from "@/lib/subjects.json";
+import { cn } from "@/lib/utils";
 
 type Subject = {
   code: string;
@@ -295,5 +296,3 @@ export default function QrPage() {
     </div>
   );
 }
-
-    
