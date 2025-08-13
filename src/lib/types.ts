@@ -8,7 +8,7 @@ export interface User {
   group?: string;
 }
 
-export interface Course {
+export interface Subject {
   id: string;
   name: string;
 }
@@ -16,16 +16,20 @@ export interface Course {
 export interface Teacher {
   id: string;
   name: string;
+  subjects: string[];
 }
 
 export interface Classroom {
   id: string;
-  name:string;
+  name: string;
+  subjects: string[];
 }
 
 export interface TimeSlot {
   id: string;
-  slot: string; // "Monday 9:00-10:00"
+  day: string;
+  from: string; // "09:00"
+  to: string;   // "10:00"
 }
 
 export interface StudentGroup {
@@ -53,4 +57,3 @@ export interface AttendanceEntry {
 }
 
     
-

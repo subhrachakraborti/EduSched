@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useMemo, useState } from 'react';
-import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
+import { useForm, type SubmitHandler, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSchedule } from '@/context/schedule-context';
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Book, School, Users, Clock, UsersRound, Trash2, Loader2, FileWarning, UserPlus } from 'lucide-react';
+import { Book, School, Users, Clock, Trash2, Loader2, FileWarning, UserPlus, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { generateTimetableAction, createUserAction } from '@/app/actions';
 import { useRouter } from 'next/navigation';
@@ -20,14 +20,25 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { CheckIcon } from 'lucide-react';
 
-type InputForm = {
-  name: string;
-};
+// Schemas for new data structures
+const subjectSchema = z.object({ name: z.string().min(1, "Subject name is required") });
+const teacherSchema = z.object({ name: z.string().min(1, "Teacher name is required"), subjects: z.array(z.string()).min(1, "Assign at least one subject") });
+const classroomSchema = z.object({ name: z.string().min(1, "Classroom name is required"), subjects: z.array(z.string()).min(1, "Assign at least one subject") });
+const timeSlotSchema = z.object({ 
+    day: z.string().min(1, "Day is required"),
+    from: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:mm)"),
+    to: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:mm)")
+});
 
-type SlotForm = {
-  slot: string;
-}
+type SubjectFormData = z.infer<typeof subjectSchema>;
+type TeacherFormData = z.infer<typeof teacherSchema>;
+type ClassroomFormData = z.infer<typeof classroomSchema>;
+type TimeSlotFormData = z.infer<typeof timeSlotSchema>;
 
 const userSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -47,61 +58,205 @@ const userSchema = z.object({
     path: ["group"],
 });
 
-
 type UserFormData = z.infer<typeof userSchema>;
 
-interface DataSectionProps<T extends { id: string; name: string } | { id: string; slot: string }> {
-  title: string;
-  Icon: React.ElementType;
-  data: T[];
-  onAdd: (item: any) => void;
-  onRemove: (id: string) => void;
-  formType: 'name' | 'slot';
+const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+function MultiSelect({ control, name, options, placeholder }: { control: any, name: string, options: {value: string, label: string}[], placeholder: string }) {
+    const { fields, append, remove } = useFieldArray({ control, name });
+    const selectedValues = fields.map((field: any) => field.value);
+
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="w-full justify-between">
+                    <span className="truncate">
+                        {selectedValues.length > 0 ? selectedValues.join(', ') : placeholder}
+                    </span>
+                    <PlusCircle className="h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                <Command>
+                    <CommandInput placeholder="Search..." />
+                    <CommandEmpty>No subjects found.</CommandEmpty>
+                    <CommandGroup>
+                        {options.map((option) => (
+                            <CommandItem
+                                key={option.value}
+                                onSelect={() => {
+                                    const index = selectedValues.findIndex((v: string) => v === option.value);
+                                    if (index > -1) {
+                                        remove(index);
+                                    } else {
+                                        append({ value: option.value });
+                                    }
+                                }}
+                            >
+                                <CheckIcon
+                                    className={cn(
+                                        "mr-2 h-4 w-4",
+                                        selectedValues.includes(option.value) ? "opacity-100" : "opacity-0"
+                                    )}
+                                />
+                                {option.label}
+                            </CommandItem>
+                        ))}
+                    </CommandGroup>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
 }
 
-function DataSection<T extends { id: string; name: string } | { id: string; slot: string }>({ title, Icon, data, onAdd, onRemove, formType }: DataSectionProps<T>) {
-  const { register, handleSubmit, reset } = useForm<InputForm & SlotForm>();
+function SubjectsSection() {
+    const { subjects, addSubject, removeSubject } = useSchedule();
+    const { register, handleSubmit, reset, formState: { errors } } = useForm<SubjectFormData>({ resolver: zodResolver(subjectSchema) });
+    const onSubmit: SubmitHandler<SubjectFormData> = (data) => { addSubject(data); reset(); };
+    return (
+        <Card>
+            <CardHeader><CardTitle>Subjects</CardTitle></CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit(onSubmit)} className="mb-4 flex gap-2">
+                    <Input {...register("name")} placeholder="New subject (e.g., Math101)" />
+                    <Button type="submit">Add</Button>
+                </form>
+                {errors.name && <p className="text-sm text-destructive mb-2">{errors.name.message}</p>}
+                <DataTable columns={['Subject']} data={subjects.map(s => [s.name])} onRemove={removeSubject} ids={subjects.map(s => s.id)} />
+            </CardContent>
+        </Card>
+    );
+}
 
-  const onSubmit: SubmitHandler<InputForm & SlotForm> = (formData) => {
-    onAdd(formData);
-    reset();
-  };
+function TeachersSection() {
+    const { teachers, addTeacher, removeTeacher, subjects } = useSchedule();
+    const { register, handleSubmit, control, reset, formState: { errors } } = useForm<TeacherFormData>({ resolver: zodResolver(teacherSchema), defaultValues: { subjects: [] }});
+    const onSubmit: SubmitHandler<TeacherFormData> = (data) => { addTeacher(data); reset(); };
+    const subjectOptions = subjects.map(s => ({ value: s.name, label: s.name }));
 
-  const isSlotForm = (item: any): item is { slot: string } => formType === 'slot';
+    return (
+        <Card>
+            <CardHeader><CardTitle>Teachers</CardTitle></CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit(onSubmit)} className="mb-4 space-y-2">
+                    <Input {...register("name")} placeholder="Teacher's name" />
+                    <Controller
+                        control={control}
+                        name="subjects"
+                        render={({ field }) => (
+                            <MultiSelect
+                                control={control}
+                                name="subjects"
+                                options={subjectOptions}
+                                placeholder="Select subjects..."
+                            />
+                        )}
+                    />
+                    <Button type="submit" className="w-full">Add Teacher</Button>
+                </form>
+                {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+                {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
+                <DataTable columns={['Teacher', 'Subjects']} data={teachers.map(t => [t.name, t.subjects.join(', ')])} onRemove={removeTeacher} ids={teachers.map(t => t.id)} />
+            </CardContent>
+        </Card>
+    );
+}
 
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Icon className="h-5 w-5" />
-          <CardTitle>{title}</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="mb-4 flex gap-2">
-          <Input {...register(formType, { required: true })} placeholder={`New ${formType}...`} />
-          <Button type="submit">Add</Button>
-        </form>
+function ClassroomsSection() {
+    const { classrooms, addClassroom, removeClassroom, subjects } = useSchedule();
+    const { register, handleSubmit, control, reset, formState: { errors } } = useForm<ClassroomFormData>({ resolver: zodResolver(classroomSchema), defaultValues: { subjects: [] } });
+    const onSubmit: SubmitHandler<ClassroomFormData> = (data) => { addClassroom(data); reset(); };
+    const subjectOptions = subjects.map(s => ({ value: s.name, label: s.name }));
+    
+    return (
+        <Card>
+            <CardHeader><CardTitle>Classrooms</CardTitle></CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit(onSubmit)} className="mb-4 space-y-2">
+                    <Input {...register("name")} placeholder="Classroom name (e.g., Room 101)" />
+                     <Controller
+                        control={control}
+                        name="subjects"
+                        render={({ field }) => (
+                            <MultiSelect
+                                control={control}
+                                name="subjects"
+                                options={subjectOptions}
+                                placeholder="Select subjects for this room..."
+                            />
+                        )}
+                    />
+                    <Button type="submit" className="w-full">Add Classroom</Button>
+                </form>
+                {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+                {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
+                <DataTable columns={['Classroom', 'Allowed Subjects']} data={classrooms.map(c => [c.name, c.subjects.join(', ')])} onRemove={removeClassroom} ids={classrooms.map(c => c.id)} />
+            </CardContent>
+        </Card>
+    );
+}
+
+function TimeSlotsSection() {
+    const { timeSlots, addTimeSlot, removeTimeSlot } = useSchedule();
+    const { register, handleSubmit, control, reset, formState: { errors } } = useForm<TimeSlotFormData>({ resolver: zodResolver(timeSlotSchema) });
+    const onSubmit: SubmitHandler<TimeSlotFormData> = (data) => { addTimeSlot(data); reset(); };
+    
+    return (
+        <Card>
+            <CardHeader><CardTitle>Time Slots</CardTitle></CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit(onSubmit)} className="mb-4 space-y-2">
+                    <Controller
+                        name="day"
+                        control={control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <SelectTrigger><SelectValue placeholder="Select a day" /></SelectTrigger>
+                                <SelectContent>
+                                    {daysOfWeek.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
+                    <div className="flex gap-2">
+                        <Input {...register("from")} type="time" />
+                        <Input {...register("to")} type="time" />
+                    </div>
+                    <Button type="submit" className="w-full">Add Time Slot</Button>
+                </form>
+                 {errors.day && <p className="text-sm text-destructive">{errors.day.message}</p>}
+                 {(errors.from || errors.to) && <p className="text-sm text-destructive">Please enter valid start and end times (HH:mm).</p>}
+                <DataTable columns={['Day', 'From', 'To']} data={timeSlots.map(ts => [ts.day, ts.from, ts.to])} onRemove={removeTimeSlot} ids={timeSlots.map(ts => ts.id)} />
+            </CardContent>
+        </Card>
+    );
+}
+
+function DataTable({ columns, data, onRemove, ids }: { columns: string[], data: string[][], onRemove: (id: string) => void, ids: string[] }) {
+    return (
         <div className="max-h-60 overflow-y-auto rounded-md border">
-          <Table>
-            <TableBody>
-              {data.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>{isSlotForm(item) ? item.slot : (item as {name: string}).name}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => onRemove(item.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {data.length === 0 && <TableRow><TableCell>No data added yet.</TableCell></TableRow>}
-            </TableBody>
-          </Table>
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
+                        <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {data.length > 0 ? data.map((row, rowIndex) => (
+                        <TableRow key={ids[rowIndex]}>
+                            {row.map((cell, cellIndex) => <TableCell key={cellIndex}>{cell}</TableCell>)}
+                            <TableCell className="text-right">
+                                <Button variant="ghost" size="icon" onClick={() => onRemove(ids[rowIndex])}>
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </TableCell>
+                        </TableRow>
+                    )) : <TableRow><TableCell colSpan={columns.length + 1}>No data added yet.</TableCell></TableRow>}
+                </TableBody>
+            </Table>
         </div>
-      </CardContent>
-    </Card>
-  );
+    );
 }
 
 function UserManagementSection({ adminSubjects }: { adminSubjects: string[] }) {
@@ -246,11 +401,10 @@ function UserManagementSection({ adminSubjects }: { adminSubjects: string[] }) {
 export default function DataManagementPage() {
   const { 
     user,
-    courses, addCourse, removeCourse, 
-    teachers, addTeacher, removeTeacher, 
-    classrooms, addClassroom, removeClassroom, 
-    timeSlots, addTimeSlot, removeTimeSlot,
-    studentGroups, addStudentGroup, removeStudentGroup,
+    subjects,
+    teachers, 
+    classrooms,
+    timeSlots,
     setIsLoading, setSchedule, isLoading
   } = useSchedule();
   
@@ -271,12 +425,23 @@ export default function DataManagementPage() {
 
   const handleGenerate = async () => {
     setIsLoading(true);
+    
+    // Convert the data to the format expected by the AI
+    const coursesForAI = subjects.map(s => s.name);
+    const teachersForAI = teachers.map(t => `${t.name} (can teach: ${t.subjects.join(', ')})`);
+    const classroomsForAI = classrooms.map(c => `${c.name} (for subjects: ${c.subjects.join(', ')})`);
+    const timeSlotsForAI = timeSlots.map(ts => `${ts.day} ${ts.from}-${ts.to}`);
+
+    // For now, student groups are managed via user creation. We need a way to get them for the AI.
+    // This is a placeholder and should be improved.
+    const studentGroupsForAI = ["Group A", "Group B"]; // Placeholder
+
     const result = await generateTimetableAction(
-      courses.map(c => c.name),
-      teachers.map(t => t.name),
-      classrooms.map(c => c.name),
-      timeSlots.map(ts => ts.slot),
-      studentGroups.map(sg => sg.name)
+      coursesForAI,
+      teachersForAI,
+      classroomsForAI,
+      timeSlotsForAI,
+      studentGroupsForAI
     );
     setIsLoading(false);
 
@@ -297,12 +462,12 @@ export default function DataManagementPage() {
   };
 
   const isGenerationDisabled = useMemo(() => {
-    return isLoading || [courses, teachers, classrooms, timeSlots, studentGroups].some(arr => arr.length === 0);
-  }, [isLoading, courses, teachers, classrooms, timeSlots, studentGroups]);
+    return isLoading || [subjects, teachers, classrooms, timeSlots].some(arr => arr.length === 0);
+  }, [isLoading, subjects, teachers, classrooms, timeSlots]);
 
   const adminSubjects = useMemo(() => {
-    return user?.subjects || [];
-  }, [user]);
+    return subjects.map(s => s.name) || [];
+  }, [subjects]);
 
   return (
     <div className="space-y-6">
@@ -317,30 +482,26 @@ export default function DataManagementPage() {
         </Button>
       </div>
       
-      <Tabs defaultValue="courses" className="w-full">
-        <div className="overflow-x-auto pb-2">
-          <TabsList className="inline-grid w-full grid-cols-2 sm:grid-cols-5">
-            <TabsTrigger value="courses">Courses</TabsTrigger>
+      <Tabs defaultValue="subjects" className="w-full">
+         <div className="overflow-x-auto pb-2">
+           <TabsList className="inline-grid w-max grid-flow-col">
+            <TabsTrigger value="subjects">Subjects</TabsTrigger>
             <TabsTrigger value="teachers">Teachers</TabsTrigger>
             <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
             <TabsTrigger value="time-slots">Time Slots</TabsTrigger>
-            <TabsTrigger value="student-groups">Student Groups</TabsTrigger>
           </TabsList>
         </div>
-        <TabsContent value="courses">
-          <DataSection title="Courses" Icon={Book} data={courses} onAdd={addCourse} onRemove={removeCourse} formType="name" />
+        <TabsContent value="subjects">
+          <SubjectsSection />
         </TabsContent>
         <TabsContent value="teachers">
-          <DataSection title="Teachers" Icon={Users} data={teachers} onAdd={addTeacher} onRemove={removeTeacher} formType="name" />
+          <TeachersSection />
         </TabsContent>
         <TabsContent value="classrooms">
-          <DataSection title="Classrooms" Icon={School} data={classrooms} onAdd={addClassroom} onRemove={removeClassroom} formType="name" />
+          <ClassroomsSection />
         </TabsContent>
         <TabsContent value="time-slots">
-          <DataSection title="Time Slots" Icon={Clock} data={timeSlots} onAdd={addTimeSlot} onRemove={removeTimeSlot} formType="slot" />
-        </TabsContent>
-        <TabsContent value="student-groups">
-          <DataSection title="Student Groups" Icon={UsersRound} data={studentGroups} onAdd={addStudentGroup} onRemove={removeStudentGroup} formType="name" />
+          <TimeSlotsSection />
         </TabsContent>
       </Tabs>
       
