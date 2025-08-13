@@ -9,7 +9,7 @@ import { parse, isValid, format } from 'date-fns';
 
 type SessionScan = {
   studentId: string;
-  studentName: string;
+  studentName: string; // This will now be the ID initially
   date: string; // ddmmyy
   subject: string;
 };
@@ -261,3 +261,5 @@ export async function createUserAction(
     return { error: errorMessage };
   }
 }
+
+    

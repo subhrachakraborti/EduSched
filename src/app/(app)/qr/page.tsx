@@ -102,27 +102,6 @@ export default function QrPage() {
     }
   };
   
-  // Handle a scanned QR code
-  const handleScan = useCallback(async (qrData: string) => {
-    if (scannedCodesThisSession.current.has(qrData) || !user) {
-        return; 
-    }
-    scannedCodesThisSession.current.add(qrData);
-
-    const match = qrData.match(/^([^.]+)\.(\d{6})\.(.+)$/);
-    if (!match) {
-        // Silently ignore non-student QR codes
-        return;
-    }
-    
-    // We will validate and save in batch, so we just add the raw data for now.
-    // The `batchRecordAttendanceAction` will handle validation and getting names.
-    // To give user feedback, we can optimistically add or have a separate validation action.
-    // For now, let's keep it simple and just show a list of scanned codes.
-    // A better implementation would be to call a validation action here.
-    // Let's assume for now we just prepare the data for the batch action.
-
-  }, [user]);
 
   // Save all collected scans to Supabase
   const handleSaveAttendance = async () => {
@@ -157,7 +136,7 @@ export default function QrPage() {
     doc.setTextColor(100);
     doc.text(`Session Date: ${format(new Date(), 'yyyy-MM-dd')}`, 14, 30);
     
-    const tableData = sessionScans.map(scan => [scan.studentName, scan.date, scan.subject]);
+    const tableData = sessionScans.map(scan => [scan.studentName, format(parseDdMMyy(scan.date), 'yyyy-MM-dd'), scan.subject]);
     
     (doc as any).autoTable({
         startY: 35,
@@ -167,6 +146,14 @@ export default function QrPage() {
 
     doc.save(`attendance-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
+
+  const parseDdMMyy = (dateStr: string) => {
+    const day = parseInt(dateStr.substring(0, 2), 10);
+    const month = parseInt(dateStr.substring(2, 4), 10) - 1; // Month is 0-indexed
+    const year = parseInt(dateStr.substring(4, 6), 10) + 2000;
+    return new Date(year, month, day);
+  };
+
 
   // Main scanning loop
   useEffect(() => {
@@ -369,8 +356,12 @@ export default function QrPage() {
         <div className="flex flex-col gap-6">
           {renderQrGenerator()}
         </div>
-        {renderScanner()}
+        <div className="flex flex-col gap-6">
+          {renderScanner()}
+        </div>
       </div>
     </div>
   );
 }
+
+    
