@@ -44,7 +44,6 @@ export interface ScheduleEntry {
   course: string;
   teacher: string;
   classroom: string;
-  studentGroup: string;
 }
 
 export interface AttendanceEntry {
@@ -56,4 +55,12 @@ export interface AttendanceEntry {
   created_at?: string;
 }
 
-    
+export interface IssuedBook {
+    id: number;
+    student_id: string;
+    book_code: string;
+    issued_at: string;
+    book_title: string | null;
+    book_author: string | null;
+    book_cover_url: string | null;
+}

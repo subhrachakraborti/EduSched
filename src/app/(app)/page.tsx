@@ -33,8 +33,8 @@ function AttendanceGauge({ subject, present, total }: { subject: string, present
     const length = 60; // Length of the needle
     const cx = 80; // Center x of the gauge container
     const cy = 80; // Center y of the gauge container
-    const x = cx + length * Math.cos(-angle * Math.PI / 180);
-    const y = cy - length * Math.sin(-angle * Math.PI / 180);
+    const x = cx + length * Math.cos(angle * Math.PI / 180);
+    const y = cy - length * Math.sin(angle * Math.PI / 180);
     return { x1: cx, y1: cy, x2: x, y2: y };
   }, [percentage]);
 

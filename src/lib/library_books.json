@@ -1,0 +1,38 @@
+
+[
+    {
+        "code": "CS101-A",
+        "title": "Introduction to Algorithms",
+        "author": "Thomas H. Cormen",
+        "description": "A comprehensive guide to data structures and algorithms, essential for computer science students.",
+        "coverUrl": "https://placehold.co/150x220.png"
+    },
+    {
+        "code": "MATH202-B",
+        "title": "Calculus: A New Horizon",
+        "author": "Howard Anton",
+        "description": "Explores the fundamental concepts of calculus, from limits and derivatives to integrals.",
+        "coverUrl": "https://placehold.co/150x220.png"
+    },
+    {
+        "code": "PHYS301-C",
+        "title": "Fundamentals of Physics",
+        "author": "Halliday & Resnick",
+        "description": "The gold standard for introductory physics courses, covering mechanics, waves, and thermodynamics.",
+        "coverUrl": "https://placehold.co/150x220.png"
+    },
+    {
+        "code": "HIST101-D",
+        "title": "Sapiens: A Brief History of Humankind",
+        "author": "Yuval Noah Harari",
+        "description": "A groundbreaking narrative of humanity's creation and evolution.",
+        "coverUrl": "https://placehold.co/150x220.png"
+    },
+    {
+        "code": "ECO101-E",
+        "title": "Freakonomics",
+        "author": "Steven D. Levitt",
+        "description": "A rogue economist explores the hidden side of everything.",
+        "coverUrl": "https://placehold.co/150x220.png"
+    }
+]

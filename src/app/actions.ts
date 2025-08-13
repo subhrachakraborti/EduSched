@@ -2,10 +2,12 @@
 'use server';
 
 import { generateSchedule } from '@/ai/flows/generate-schedule';
-import type { ScheduleEntry, User } from '@/lib/types';
+import type { ScheduleEntry, User, IssuedBook } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { getFirebaseAdmin } from '@/lib/firebase-admin';
 import { parse, isValid, format } from 'date-fns';
+import libraryBooks from '@/lib/library_books.json';
+
 
 export async function generateTimetableAction(
   courses: string[],
@@ -34,7 +36,8 @@ export async function generateTimetableAction(
         throw new Error("Generated schedule is not in the expected array format.");
       }
       
-      return { schedule: parsedSchedule as Omit<ScheduleEntry, 'id'>[] };
+      const scheduleWithoutStudentGroup = parsedSchedule.map(({ studentGroup, ...rest }) => rest);
+      return { schedule: scheduleWithoutStudentGroup as Omit<ScheduleEntry, 'id'>[] };
 
     } catch (parseError) {
       console.error("Error parsing generated schedule:", parseError);
@@ -269,4 +272,73 @@ export async function fetchTeachersAction(): Promise<{ data?: User[], error?: st
         return { error: 'Could not fetch teachers from the database.' };
     }
     return { data: data ?? [] };
+}
+
+// --- Library Actions ---
+
+export async function fetchBookDetailsAction(
+    code: string
+): Promise<{ book?: (typeof libraryBooks)[0]; error?: string }> {
+    try {
+        const book = libraryBooks.find(b => b.code.toLowerCase() === code.toLowerCase());
+        if (!book) {
+            return { error: 'Book with this code not found in the library catalog.' };
+        }
+        return { book };
+    } catch (e: any) {
+        return { error: 'An unexpected error occurred while searching for the book.' };
+    }
+}
+
+export async function issueBookAction(
+    studentId: string,
+    bookCode: string,
+    bookTitle: string,
+    bookAuthor: string,
+    bookCoverUrl: string
+): Promise<{ success?: boolean; error?: string }> {
+    try {
+        const { error } = await supabase
+            .from('issued_books')
+            .insert({
+                student_id: studentId,
+                book_code: bookCode,
+                book_title: bookTitle,
+                book_author: bookAuthor,
+                book_cover_url: bookCoverUrl
+            }, { onConflict: 'student_id, book_code' });
+
+        if (error) {
+            if (error.code === '23505') { // Unique constraint violation
+                return { error: 'You have already issued this book.' };
+            }
+            console.error('Error issuing book:', error);
+            return { error: 'Failed to issue the book. Please try again.' };
+        }
+        return { success: true };
+    } catch (e: any) {
+        console.error('Failed to issue book:', e);
+        return { error: 'An unexpected error occurred while issuing the book.' };
+    }
+}
+
+export async function fetchIssuedBooksAction(
+    studentId: string
+): Promise<{ books?: IssuedBook[]; error?: string }> {
+    try {
+        const { data, error } = await supabase
+            .from('issued_books')
+            .select('*')
+            .eq('student_id', studentId)
+            .order('issued_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching issued books:', error);
+            return { error: 'Failed to retrieve your list of issued books.' };
+        }
+        return { books: data ?? [] };
+    } catch (e: any) {
+        console.error('Failed to fetch issued books:', e);
+        return { error: 'An unexpected error occurred.' };
+    }
 }

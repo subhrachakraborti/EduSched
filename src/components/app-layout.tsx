@@ -4,7 +4,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { DatabaseZap, GraduationCap, LayoutGrid, QrCode, LogOut } from "lucide-react"
+import { DatabaseZap, GraduationCap, LayoutGrid, QrCode, LogOut, Library } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -33,6 +33,7 @@ function BottomNavBar() {
     { href: "/", label: "Dashboard", icon: LayoutGrid },
     ...(user?.type === 'admin' ? [{ href: "/data", label: "Data", icon: DatabaseZap }] : []),
     { href: "/qr", label: "QR Tools", icon: QrCode },
+    { href: "/library", label: "Library", icon: Library },
   ]
 
   return (
@@ -133,6 +134,21 @@ function DesktopSidebar() {
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={isActive("/library")}
+              tooltip={{ children: "Library" }}
+              onClick={handleLinkClick}
+            >
+              <Link href="/library">
+                <Library />
+                <span>Library</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter>
