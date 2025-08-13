@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useSchedule } from "@/context/schedule-context";
 import {
   Table,
@@ -12,73 +12,37 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, FileWarning } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ScheduleEntry } from "@/lib/types";
+import { fetchScheduleAction } from "@/app/actions";
+import { useToast } from "@/hooks/use-toast";
 
-function EditableCell({
-  value: initialValue,
-  onSave,
-  isEditable,
-}: {
-  value: string;
-  onSave: (value: string) => void;
-  isEditable: boolean;
-}) {
-  const [value, setValue] = useState(initialValue);
-  const [isEditing, setIsEditing] = useState(false);
-
-  const handleSave = () => {
-    onSave(value);
-    setIsEditing(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleSave();
-    } else if (e.key === "Escape") {
-      setValue(initialValue);
-      setIsEditing(false);
-    }
-  };
-
-  if (isEditing && isEditable) {
-    return (
-      <Input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={handleSave}
-        onKeyDown={handleKeyDown}
-        autoFocus
-        className="h-8"
-      />
-    );
-  }
-
-  return (
-    <div
-      onClick={() => isEditable && setIsEditing(true)}
-      className={`min-h-[2rem] w-full rounded-md p-2 ${isEditable ? 'cursor-pointer hover:bg-muted' : ''}`}
-    >
-      {value}
-    </div>
-  );
-}
 
 export default function DashboardPage() {
-  const { user, schedule, isLoading, updateScheduleEntry } = useSchedule();
+  const { user, schedule, setSchedule, isLoading } = useSchedule();
+  const [isFetching, setIsFetching] = useState(true);
+  const { toast } = useToast();
 
-  const handleCellSave = (id: string, field: keyof ScheduleEntry, value: string) => {
-    updateScheduleEntry(id, field, value);
-  };
+  useEffect(() => {
+    const loadSchedule = async () => {
+        setIsFetching(true);
+        const result = await fetchScheduleAction();
+        if (result.error) {
+            toast({ variant: 'destructive', title: 'Failed to load schedule', description: result.error });
+        } else {
+            setSchedule(result.schedule || []);
+        }
+        setIsFetching(false);
+    }
+    loadSchedule();
+  }, [setSchedule, toast]);
 
-  const isEditable = user?.type === 'student' || user?.type === 'teacher';
 
   const renderSchedule = () => {
-    if (isLoading) {
+    if (isLoading || isFetching) {
       return (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -96,9 +60,11 @@ export default function DashboardPage() {
           <p className="mb-4 mt-2 text-sm text-muted-foreground">
             Get started by adding your data and generating a new schedule.
           </p>
-          <Button asChild>
-            <Link href="/data">Go to Data Management</Link>
-          </Button>
+           {user?.type === 'admin' && (
+                <Button asChild>
+                    <Link href="/data">Go to Data Management</Link>
+                </Button>
+            )}
         </div>
       );
     }
@@ -113,30 +79,16 @@ export default function DashboardPage() {
               <TableHead>Course</TableHead>
               <TableHead>Teacher</TableHead>
               <TableHead>Classroom</TableHead>
-              <TableHead>Student Group</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {schedule.map((entry) => (
               <TableRow key={entry.id}>
-                <TableCell>
-                  <EditableCell value={entry.day} onSave={(v) => handleCellSave(entry.id, 'day', v)} isEditable={isEditable} />
-                </TableCell>
-                <TableCell>
-                  <EditableCell value={entry.time} onSave={(v) => handleCellSave(entry.id, 'time', v)} isEditable={isEditable} />
-                </TableCell>
-                <TableCell>
-                  <EditableCell value={entry.course} onSave={(v) => handleCellSave(entry.id, 'course', v)} isEditable={isEditable} />
-                </TableCell>
-                <TableCell>
-                  <EditableCell value={entry.teacher} onSave={(v) => handleCellSave(entry.id, 'teacher', v)} isEditable={isEditable} />
-                </TableCell>
-                <TableCell>
-                  <EditableCell value={entry.classroom} onSave={(v) => handleCellSave(entry.id, 'classroom', v)} isEditable={isEditable} />
-                </TableCell>
-                <TableCell>
-                  <EditableCell value={entry.studentGroup} onSave={(v) => handleCellSave(entry.id, 'studentGroup', v)} isEditable={isEditable} />
-                </TableCell>
+                <TableCell>{entry.day}</TableCell>
+                <TableCell>{entry.time}</TableCell>
+                <TableCell>{entry.course}</TableCell>
+                <TableCell>{entry.teacher}</TableCell>
+                <TableCell>{entry.classroom}</TableCell>
               </TableRow>
             ))}
           </TableBody>

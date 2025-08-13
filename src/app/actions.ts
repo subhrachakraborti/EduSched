@@ -13,10 +13,10 @@ export async function generateTimetableAction(
   classrooms: string[],
   timeSlots: string[],
   studentGroups: string[]
-): Promise<{ schedule: ScheduleEntry[] | null; error?: string }> {
+): Promise<{ schedule: Omit<ScheduleEntry, 'id'>[] | null; error?: string }> {
   try {
-    if (!courses.length || !teachers.length || !classrooms.length || !timeSlots.length || !studentGroups.length) {
-        return { schedule: null, error: 'Please provide all required data: courses, teachers, classrooms, time slots, and student groups.' };
+    if (!courses.length || !teachers.length || !classrooms.length || !timeSlots.length ) {
+        return { schedule: null, error: 'Please provide all required data: courses, teachers, classrooms, and time slots.' };
     }
 
     const result = await generateSchedule({
@@ -33,10 +33,8 @@ export async function generateTimetableAction(
       if (!Array.isArray(parsedSchedule)) {
         throw new Error("Generated schedule is not in the expected array format.");
       }
-
-      const scheduleWithIds = parsedSchedule.map(entry => ({...entry, id: crypto.randomUUID()}));
       
-      return { schedule: scheduleWithIds as ScheduleEntry[] };
+      return { schedule: parsedSchedule as Omit<ScheduleEntry, 'id'>[] };
 
     } catch (parseError) {
       console.error("Error parsing generated schedule:", parseError);
@@ -47,6 +45,47 @@ export async function generateTimetableAction(
     return { schedule: null, error: 'Failed to generate schedule due to an unexpected error.' };
   }
 }
+
+
+export async function saveScheduleAction(
+  schedule: Omit<ScheduleEntry, 'id'>[]
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    // Clear the existing timeline first to ensure a fresh start
+    const { error: deleteError } = await supabase.from('timeline').delete().gt('id', 0);
+    if (deleteError) {
+      console.error("Error clearing timeline:", deleteError);
+      return { error: 'Failed to clear the previous schedule.' };
+    }
+
+    // Insert the new schedule
+    const { error: insertError } = await supabase.from('timeline').insert(schedule);
+    if (insertError) {
+      console.error("Error inserting new schedule:", insertError);
+      return { error: 'Failed to save the new schedule.' };
+    }
+
+    return { success: true };
+  } catch (e: any) {
+    console.error('Failed to save schedule:', e);
+    return { error: 'An unexpected error occurred while saving the schedule: ' + e.message };
+  }
+}
+
+export async function fetchScheduleAction(): Promise<{ schedule?: ScheduleEntry[]; error?: string }> {
+    try {
+        const { data, error } = await supabase.from('timeline').select('*').order('day').order('time');
+        if (error) {
+            console.error("Error fetching schedule:", error);
+            return { error: 'Failed to fetch the schedule from the database.' };
+        }
+        return { schedule: data ?? [] };
+    } catch (e: any) {
+        console.error('Failed to fetch schedule:', e);
+        return { error: 'An unexpected error occurred while fetching the schedule.' };
+    }
+}
+
 
 export async function batchRecordAttendanceAction(
     studentIds: string[],
@@ -231,5 +270,3 @@ export async function fetchTeachersAction(): Promise<{ data?: User[], error?: st
     }
     return { data: data ?? [] };
 }
-
-    

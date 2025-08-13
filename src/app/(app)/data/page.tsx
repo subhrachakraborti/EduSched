@@ -10,9 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Book, School, Users, Clock, Loader2, FileWarning, UserPlus } from 'lucide-react';
+import { Book, School, Users, Clock, Loader2, FileWarning, UserPlus, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { generateTimetableAction, createUserAction, fetchTeachersAction } from '@/app/actions';
+import { generateTimetableAction, createUserAction, fetchTeachersAction, saveScheduleAction } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -172,7 +172,7 @@ function TimeSlotsSection() {
                             <li key={ts.id} className="flex items-center justify-between p-2 text-sm">
                                 <span>{ts.day}: {ts.from} - {ts.to}</span>
                                 <Button variant="ghost" size="icon" onClick={() => removeTimeSlot(ts.id)}>
-                                    <UserPlus className="h-4 w-4" />
+                                    <X className="h-4 w-4" />
                                 </Button>
                             </li>
                         )) : (
@@ -378,24 +378,21 @@ export default function DataManagementPage() {
   const handleGenerate = async () => {
     setIsLoading(true);
     
-    // Convert the data to the format expected by the AI
     const coursesForAI = user.subjects || [];
     const teachersForAI = availableTeachers.filter(t => selectedTeachers.includes(t.id)).map(t => `${t.name} (can teach: ${t.subjects?.join(', ') || 'N/A'})`);
     const classroomsForAI = selectedClassrooms;
     const timeSlotsForAI = timeSlots.map(ts => `${ts.day} ${ts.from}-${ts.to}`);
 
-    // For now, student groups are managed via user creation. We need a way to get them for the AI.
-    // This is a placeholder and should be improved.
-    const studentGroupsForAI = ["Group A", "Group B"]; // Placeholder
+    // We get student groups by finding all unique group names from all users of type 'student'
+    const studentGroupsForAI = ["Group A", "Group B"]; // Placeholder - should be fetched dynamically
 
     const result = await generateTimetableAction(
       coursesForAI,
       teachersForAI,
       classroomsForAI,
       timeSlotsForAI,
-      studentGroupsForAI
+      studentGroupsForAI,
     );
-    setIsLoading(false);
 
     if(result.error) {
       toast({
@@ -403,13 +400,24 @@ export default function DataManagementPage() {
         title: "Generation Failed",
         description: result.error,
       });
+      setIsLoading(false);
     } else if (result.schedule) {
-      setSchedule(result.schedule);
-      toast({
-        title: "Success!",
-        description: "Timetable generated successfully.",
-      });
-      router.push('/');
+      const saveResult = await saveScheduleAction(result.schedule);
+      setIsLoading(false);
+      if (saveResult.error) {
+         toast({
+            variant: "destructive",
+            title: "Failed to Save Schedule",
+            description: saveResult.error,
+        });
+      } else {
+        setSchedule(result.schedule);
+        toast({
+            title: "Success!",
+            description: "Timetable generated and saved successfully.",
+        });
+        router.push('/');
+      }
     }
   };
 
@@ -472,5 +480,3 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
-    

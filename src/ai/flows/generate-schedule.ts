@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -21,7 +22,7 @@ const GenerateScheduleInputSchema = z.object({
 export type GenerateScheduleInput = z.infer<typeof GenerateScheduleInputSchema>;
 
 const GenerateScheduleOutputSchema = z.object({
-  schedule: z.string().describe('A conflict-free timetable in JSON format.'),
+  schedule: z.string().describe('A conflict-free timetable in JSON format. Each entry must have day, time, course, teacher, and classroom. Do not include student groups.'),
 });
 export type GenerateScheduleOutput = z.infer<typeof GenerateScheduleOutputSchema>;
 
@@ -33,15 +34,18 @@ const prompt = ai.definePrompt({
   name: 'generateSchedulePrompt',
   input: {schema: GenerateScheduleInputSchema},
   output: {schema: GenerateScheduleOutputSchema},
-  prompt: `You are a timetable generator expert. You are given the following data about courses, teachers, classrooms, time slots and student groups.
+  prompt: `You are a timetable generator expert. You are given the following data about courses, teachers, classrooms, and time slots.
 
-Generate a conflict-free timetable in JSON format based on the following information. Make sure that every class have a teacher, a classroom, a time slot and a student group.
+Generate a conflict-free timetable in JSON format based on the following information. 
+Make sure that every class has a teacher, a classroom, a time slot, and a course.
+Ensure that the 'day' and 'time' fields are always populated for every single entry in the schedule.
+Do NOT include a 'studentGroup' in the output.
 
 Courses: {{{courses}}}
 Teachers: {{{teachers}}}
 Classrooms: {{{classrooms}}}
 Time Slots: {{{timeSlots}}}
-Student Groups: {{{studentGroups}}}`, 
+Student Groups to consider for scheduling: {{{studentGroups}}}`, 
 });
 
 const generateScheduleFlow = ai.defineFlow(
