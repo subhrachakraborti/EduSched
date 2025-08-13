@@ -1,26 +1,75 @@
+
 [
   {
-    "studentId": "student001",
+    "student_id": "student001",
     "date": "2025-08-12",
-    "subject": "Phys201",
-    "timestamp": "2025-08-12T15:16:27.486Z"
+    "subject_code": "Phys201",
+    "marked_by": "teacher001"
   },
   {
-    "studentId": "student001",
-    "date": "2025-08-12",
-    "subject": "Math101",
-    "timestamp": "2025-08-12T15:16:34.880Z"
+    "student_id": "student001",
+    "date": "2025-08-13",
+    "subject_code": "Phys201",
+    "marked_by": "teacher001"
+  },
+    {
+    "student_id": "student001",
+    "date": "2025-08-14",
+    "subject_code": "Phys201",
+    "marked_by": "teacher001"
   },
   {
-    "studentId": "student002",
+    "student_id": "student001",
     "date": "2025-08-12",
-    "subject": "Bio101",
-    "timestamp": "2025-08-12T15:16:53.364Z"
+    "subject_code": "Math101",
+    "marked_by": "teacher001"
   },
   {
-    "studentId": "fY2fp98xVjMDGPGxJ82r7X0iqLp2",
+    "student_id": "student001",
+    "date": "2025-08-13",
+    "subject_code": "Math101",
+    "marked_by": "teacher001"
+  },
+  {
+    "student_id": "student001",
     "date": "2025-08-12",
-    "subject": "Phys201",
-    "timestamp": "2025-08-12T15:56:23.858Z"
+    "subject_code": "CS101",
+    "marked_by": "teacher003"
+  },
+  {
+    "student_id": "student002",
+    "date": "2025-08-12",
+    "subject_code": "Bio101",
+    "marked_by": "teacher005"
+  },
+  {
+    "student_id": "student002",
+    "date": "2025-08-13",
+    "subject_code": "Bio101",
+    "marked_by": "teacher005"
+  },
+  {
+    "student_id": "student002",
+    "date": "2025-08-14",
+    "subject_code": "Bio101",
+    "marked_by": "teacher005"
+  },
+  {
+    "student_id": "student002",
+    "date": "2025-08-15",
+    "subject_code": "Bio101",
+    "marked_by": "teacher005"
+  },
+   {
+    "student_id": "student002",
+    "date": "2025-08-12",
+    "subject_code": "Chem101",
+    "marked_by": "teacher002"
+  },
+  {
+    "student_id": "fY2fp98xVjMDGPGxJ82r7X0iqLp2",
+    "date": "2025-08-12",
+    "subject_code": "Phys201",
+    "marked_by": "teacher001"
   }
 ]
