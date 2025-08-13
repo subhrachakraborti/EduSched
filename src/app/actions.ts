@@ -2,10 +2,17 @@
 'use server';
 
 import { generateSchedule } from '@/ai/flows/generate-schedule';
-import type { ScheduleEntry, User } from '@/lib/types';
+import type { ScheduleEntry, User, AttendanceEntry } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { getFirebaseAdmin } from '@/lib/firebase-admin';
-import { parse, isValid } from 'date-fns';
+import { parse, isValid, format } from 'date-fns';
+
+type SessionScan = {
+  studentId: string;
+  studentName: string;
+  date: string; // ddmmyy
+  subject: string;
+};
 
 export async function generateTimetableAction(
   courses: string[],
@@ -47,6 +54,75 @@ export async function generateTimetableAction(
     return { schedule: null, error: 'Failed to generate schedule due to an unexpected error.' };
   }
 }
+
+export async function batchRecordAttendanceAction(
+    scans: SessionScan[],
+    markerId: string
+): Promise<{ success?: boolean; count?: number; error?: string }> {
+    try {
+        const attendanceRecords: Omit<AttendanceEntry, 'id' | 'created_at'>[] = [];
+        const uniqueEntries = new Set<string>();
+
+        // Fetch all relevant student names in one go
+        const studentIds = [...new Set(scans.map(scan => scan.studentId))];
+        const { data: studentData, error: studentError } = await supabase
+            .from('users')
+            .select('id, name')
+            .in('id', studentIds);
+
+        if (studentError) {
+            console.error("Error fetching student data:", studentError);
+            return { error: "Could not retrieve student details." };
+        }
+        
+        const studentNameMap = new Map(studentData.map(u => [u.id, u.name]));
+
+        for (const scan of scans) {
+            const parsedDate = parse(scan.date, 'ddMMyy', new Date());
+            if (!isValid(parsedDate)) {
+                console.warn(`Skipping record with invalid date: ${scan.date}`);
+                continue;
+            }
+            const dateForDb = format(parsedDate, 'yyyy-MM-dd');
+            const studentName = studentNameMap.get(scan.studentId) || 'Unknown Student';
+
+            const uniqueKey = `${scan.studentId}-${dateForDb}-${scan.subject}`;
+            if (uniqueEntries.has(uniqueKey)) {
+                continue;
+            }
+
+            attendanceRecords.push({
+                student_id: scan.studentId,
+                date: dateForDb,
+                subject_code: scan.subject,
+                marked_by: markerId,
+            });
+            uniqueEntries.add(uniqueKey);
+        }
+
+        if (attendanceRecords.length === 0) {
+            return { error: "No valid new attendance records to save." };
+        }
+
+        const { error: insertError } = await supabase.from('attendance').insert(attendanceRecords);
+
+        if (insertError) {
+            console.error("Error inserting attendance records:", insertError);
+            // Check for unique constraint violation
+            if (insertError.code === '23505') { // PostgreSQL unique violation
+                return { error: 'Some attendance records already exist and were not saved again.' };
+            }
+            return { error: 'Failed to save attendance records to the database.' };
+        }
+
+        return { success: true, count: attendanceRecords.length };
+
+    } catch (e) {
+        console.error('Failed to record attendance:', e);
+        return { error: 'An unexpected error occurred while saving attendance.' };
+    }
+}
+
 
 export async function recordAttendanceAction(
     qrData: string,
@@ -137,7 +213,6 @@ export async function createUserAction(
     const admin = await getFirebaseAdmin();
     const auth = admin.auth();
 
-    // 1. Create user in Firebase Auth
     const firebaseUser = await auth.createUser({
       email: userData.email,
       password: userData.password,
@@ -153,14 +228,11 @@ export async function createUserAction(
         group: userData.group,
     };
 
-    // 2. Insert user data into Supabase
     const { error: supabaseError } = await supabase
       .from('users')
       .insert(newUser);
 
     if (supabaseError) {
-      // If Supabase insert fails, we should delete the user from Firebase Auth
-      // to avoid orphaned auth accounts.
       await auth.deleteUser(firebaseUser.uid);
       console.error("Supabase user creation error:", supabaseError);
       return { error: "Failed to save user profile to database." };

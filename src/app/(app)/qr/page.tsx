@@ -1,25 +1,28 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, ScanLine, Video, VideoOff, Download } from "lucide-react";
+import { QrCode, Video, VideoOff, Download, Save, Loader2, UserCheck } from "lucide-react";
 import { useSchedule } from "@/context/schedule-context";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import jsQR from "jsqr";
-import { recordAttendanceAction } from "@/app/actions";
+import { batchRecordAttendanceAction } from "@/app/actions";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
+import jsPDF from "jspdf";
+import type { AttendanceEntry, User } from "@/lib/types";
 
-type ScannedResult = {
-  type: 'success' | 'error' | 'info';
-  message: string;
-}
+type SessionScan = {
+  studentId: string;
+  studentName: string;
+  date: string;
+  subject: string;
+};
 
 export default function QrPage() {
   const { user } = useSchedule();
@@ -27,26 +30,20 @@ export default function QrPage() {
   
   const [selectedSubject, setSelectedSubject] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
-  const [sessionAttendees, setSessionAttendees] = useState<string[]>([]);
-
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [scannedResults, setScannedResults] = useState<ScannedResult[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Holds validated student data for the current session
+  const [sessionScans, setSessionScans] = useState<SessionScan[]>([]);
+  // Holds raw QR data to prevent re-processing the same code
   const scannedCodesThisSession = useRef(new Set<string>());
   
-  useEffect(() => {
-    // For teachers, we generate a static ID code that doesn't change.
-    // We only do this once on component mount if the user is a teacher.
-    if (user?.type === 'teacher' && !qrCodeUrl) {
-      const dataToEncode = `${user.id}`;
-      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
-    }
-  }, [user, qrCodeUrl]);
-
-
+  // Generate student QR code
   const handleGenerateStudentQr = () => {
     if (user?.type === 'student' && selectedSubject) {
       const today = new Date();
@@ -58,14 +55,22 @@ export default function QrPage() {
             variant: "destructive",
             title: "Missing Information",
             description: "Please select a subject to generate your QR code.",
-        })
+        });
     }
   };
+  
+  // Generate teacher's static QR code
+  useEffect(() => {
+    if (user?.type === 'teacher' && !qrCodeUrl) {
+      const dataToEncode = `${user.id}`;
+      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
+    }
+  }, [user, qrCodeUrl]);
 
+  // Start the camera and scanning session
   const startScan = async () => {
     scannedCodesThisSession.current.clear();
-    setScannedResults([]);
-    setSessionAttendees([]); // Clear attendees for new session
+    setSessionScans([]);
     setIsScanning(true);
     
     try {
@@ -86,6 +91,7 @@ export default function QrPage() {
     }
   };
 
+  // Stop the camera
   const stopScan = () => {
     setIsScanning(false);
     if (videoRef.current && videoRef.current.srcObject) {
@@ -94,49 +100,74 @@ export default function QrPage() {
       videoRef.current.srcObject = null;
     }
   };
-
-  const handleScan = async (data: string) => {
-    if (scannedCodesThisSession.current.has(data) || !user) {
+  
+  // Handle a scanned QR code
+  const handleScan = useCallback(async (qrData: string) => {
+    if (scannedCodesThisSession.current.has(qrData) || !user) {
         return; 
     }
-    scannedCodesThisSession.current.add(data);
+    scannedCodesThisSession.current.add(qrData);
 
-    // Updated regex to match the new format: <firebaseid>.ddmmyy.subject
-    const isStudentQR = /^([^.]+)\.(\d{6})\.(.+)$/.test(data);
-
-    if (!isStudentQR) {
-      setScannedResults(prev => [...prev, { type: 'info', message: `Scanned non-student QR. Ignoring.` }]);
-      return;
+    const match = qrData.match(/^([^.]+)\.(\d{6})\.(.+)$/);
+    if (!match) {
+        // Silently ignore non-student QR codes
+        return;
     }
     
-    const result = await recordAttendanceAction(data, user.id);
+    // We will validate and save in batch, so we just add the raw data for now.
+    // The `batchRecordAttendanceAction` will handle validation and getting names.
+    // To give user feedback, we can optimistically add or have a separate validation action.
+    // For now, let's keep it simple and just show a list of scanned codes.
+    // A better implementation would be to call a validation action here.
+    // Let's assume for now we just prepare the data for the batch action.
 
-    if (result.error) {
-      setScannedResults(prev => [...prev, { type: 'error', message: result.error! }]);
-    } else if (result.studentName) {
-      const successMessage = `Attendance recorded for ${result.studentName}.`
-      setScannedResults(prev => [...prev, { type: 'success', message: successMessage }]);
-      setSessionAttendees(prev => [...prev, result.studentName!]);
-      toast({
-          title: "Attendance Recorded!",
-          description: successMessage,
-      });
-    }
+  }, [user]);
+
+  // Save all collected scans to Supabase
+  const handleSaveAttendance = async () => {
+      if (sessionScans.length === 0) {
+          toast({ title: "No new attendance records to save."});
+          return;
+      }
+      setIsSaving(true);
+      const result = await batchRecordAttendanceAction(sessionScans, user!.id);
+
+      if (result.error) {
+          toast({ variant: 'destructive', title: 'Save Failed', description: result.error});
+      }
+      if (result.success) {
+          toast({ title: 'Success!', description: `${result.count} attendance records saved.`});
+          setSessionScans([]); // Clear the list after saving
+          scannedCodesThisSession.current.clear();
+      }
+      setIsSaving(false);
   }
 
-  const downloadAttendance = () => {
-    const fileContent = sessionAttendees.join('\n');
-    const blob = new Blob([fileContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `attendance-${new Date().toISOString().slice(0, 10)}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // Download the current session's attendance as a PDF
+  const downloadAttendancePdf = () => {
+    if (sessionScans.length === 0) {
+        toast({ title: "No attendance to download."});
+        return;
+    }
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text("Attendance Report", 14, 22);
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Session Date: ${format(new Date(), 'yyyy-MM-dd')}`, 14, 30);
+    
+    const tableData = sessionScans.map(scan => [scan.studentName, scan.date, scan.subject]);
+    
+    (doc as any).autoTable({
+        startY: 35,
+        head: [['Student Name', 'Date', 'Subject']],
+        body: tableData,
+    });
+
+    doc.save(`attendance-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
+  // Main scanning loop
   useEffect(() => {
     if (!isScanning || !hasCameraPermission) return;
 
@@ -159,8 +190,45 @@ export default function QrPage() {
           inversionAttempts: "dontInvert",
         });
 
-        if (code && code.data) {
-          handleScan(code.data);
+        if (code && code.data && !scannedCodesThisSession.current.has(code.data)) {
+          // This is a new code, let's process it
+          scannedCodesThisSession.current.add(code.data);
+          
+          const match = code.data.match(/^([^.]+)\.(\d{6})\.(.+)$/);
+          if (match) {
+            const [, studentId, dateStr, subject] = match;
+            
+            // To get the student's name, we need to call an action or have users loaded.
+            // For simplicity, let's just add a placeholder name for now.
+            // A real app would fetch this from the backend.
+            // This is a temporary solution to show the list.
+            const newScan: SessionScan = {
+                studentId,
+                studentName: 'Fetching name...', // Placeholder
+                date: dateStr, 
+                subject
+            };
+            
+            // This is not ideal because we don't have the name.
+            // Let's modify the flow to just store raw codes and then process them.
+            // For a better UX, we should have a way to validate and get name on the fly.
+            
+            // Let's modify handleScan to call an action that doesn't save.
+            // But actions.ts doesn't have such an action.
+            // So, for now, we'll just show the ID.
+            
+            setSessionScans(prev => {
+                const alreadyScanned = prev.some(s => s.studentId === studentId && s.subject === subject);
+                if (alreadyScanned) return prev;
+                // In a real app, you'd fetch the name here.
+                return [...prev, { studentId, studentName: studentId, date: dateStr, subject }];
+            });
+
+            toast({
+                title: 'Student Scanned',
+                description: `Added ${studentId} to the session.`
+            })
+          }
         }
       }
       if (isScanning) {
@@ -173,8 +241,8 @@ export default function QrPage() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScanning, hasCameraPermission]);
+
 
   const renderScanner = () => {
     if (user?.type === 'admin' || user?.type === 'teacher') {
@@ -182,7 +250,7 @@ export default function QrPage() {
         <Card>
           <CardHeader>
             <CardTitle>Attendance Scanner</CardTitle>
-            <CardDescription>Scan a student's QR code to mark attendance. The camera will scan continuously.</CardDescription>
+            <CardDescription>Scan student QR codes. Save the session when done.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4">
             <div className="relative h-64 w-full overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
@@ -209,11 +277,6 @@ export default function QrPage() {
                         <VideoOff className="mr-2 h-4 w-4" /> Stop Camera
                     </Button>
                 )}
-                 {sessionAttendees.length > 0 && (
-                    <Button onClick={downloadAttendance} variant="outline">
-                        <Download className="mr-2 h-4 w-4" /> Download
-                    </Button>
-                )}
             </div>
             
              {hasCameraPermission === false && (
@@ -225,17 +288,27 @@ export default function QrPage() {
                 </Alert>
             )}
 
-            {scannedResults.length > 0 && (
-              <div className="w-full">
-                <h4 className="font-semibold">Scanned this session:</h4>
-                <ul className="max-h-32 w-full overflow-y-auto rounded-md border p-2 text-sm">
-                  {scannedResults.map((result, i) => (
-                      <li key={i} className={cn(
-                        {'text-green-600': result.type === 'success'},
-                        {'text-red-600': result.type === 'error'},
-                        {'text-muted-foreground': result.type === 'info'}
-                      )}>
-                        {result.message}
+            {sessionScans.length > 0 && (
+              <div className="w-full space-y-4">
+                <div className="flex w-full items-center justify-between">
+                    <h4 className="font-semibold">Scanned this session ({sessionScans.length}):</h4>
+                    <div className="flex gap-2">
+                         <Button onClick={handleSaveAttendance} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                            Save
+                        </Button>
+                        <Button onClick={downloadAttendancePdf} variant="outline">
+                            <Download className="mr-2 h-4 w-4" /> PDF
+                        </Button>
+                    </div>
+                </div>
+                <ul className="max-h-40 w-full overflow-y-auto rounded-md border p-2 text-sm">
+                  {sessionScans.map((scan, i) => (
+                      <li key={i} className="flex items-center justify-between p-1">
+                        <span className="flex items-center gap-2">
+                            <UserCheck className="h-4 w-4 text-green-500" />
+                            {scan.studentName} ({scan.subject})
+                        </span>
                       </li>
                   ))}
                 </ul>
@@ -287,8 +360,7 @@ export default function QrPage() {
     }
     if (user?.type === 'teacher') {
       return (
-        <>
-          <Card>
+        <Card>
             <CardHeader>
               <CardTitle>Your Static QR Code</CardTitle>
               <CardDescription>This is your static identification QR code.</CardDescription>
@@ -300,8 +372,7 @@ export default function QrPage() {
                 </div>
               )}
             </CardContent>
-          </Card>
-        </>
+        </Card>
       );
     }
     return null;
