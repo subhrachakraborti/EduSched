@@ -199,29 +199,11 @@ export default function QrPage() {
           if (match) {
             const [, studentId, dateStr, subject] = match;
             
-            // To get the student's name, we need to call an action or have users loaded.
-            // For simplicity, let's just add a placeholder name for now.
-            // A real app would fetch this from the backend.
-            // This is a temporary solution to show the list.
-            const newScan: SessionScan = {
-                studentId,
-                studentName: 'Fetching name...', // Placeholder
-                date: dateStr, 
-                subject
-            };
-            
-            // This is not ideal because we don't have the name.
-            // Let's modify the flow to just store raw codes and then process them.
-            // For a better UX, we should have a way to validate and get name on the fly.
-            
-            // Let's modify handleScan to call an action that doesn't save.
-            // But actions.ts doesn't have such an action.
-            // So, for now, we'll just show the ID.
-            
             setSessionScans(prev => {
                 const alreadyScanned = prev.some(s => s.studentId === studentId && s.subject === subject);
                 if (alreadyScanned) return prev;
-                // In a real app, you'd fetch the name here.
+                // In a real app, you'd fetch the name here. We do it on save now.
+                // For UI, we show the ID until we have the name. The name will be populated in batch action.
                 return [...prev, { studentId, studentName: studentId, date: dateStr, subject }];
             });
 

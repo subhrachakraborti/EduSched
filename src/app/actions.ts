@@ -65,6 +65,10 @@ export async function batchRecordAttendanceAction(
 
         // Fetch all relevant student names in one go
         const studentIds = [...new Set(scans.map(scan => scan.studentId))];
+        if (studentIds.length === 0) {
+            return { error: "No student IDs were provided." };
+        }
+        
         const { data: studentData, error: studentError } = await supabase
             .from('users')
             .select('id, name')
@@ -72,7 +76,7 @@ export async function batchRecordAttendanceAction(
 
         if (studentError) {
             console.error("Error fetching student data:", studentError);
-            return { error: "Could not retrieve student details." };
+            return { error: "Could not retrieve student details from the database." };
         }
         
         const studentNameMap = new Map(studentData.map(u => [u.id, u.name]));
@@ -80,11 +84,18 @@ export async function batchRecordAttendanceAction(
         for (const scan of scans) {
             const parsedDate = parse(scan.date, 'ddMMyy', new Date());
             if (!isValid(parsedDate)) {
-                console.warn(`Skipping record with invalid date: ${scan.date}`);
+                console.warn(`Skipping record with invalid date format: ${scan.date}`);
                 continue;
             }
             const dateForDb = format(parsedDate, 'yyyy-MM-dd');
-            const studentName = studentNameMap.get(scan.studentId) || 'Unknown Student';
+            
+            // The student name is now retrieved from the map, not from the input `scan` object
+            const studentName = studentNameMap.get(scan.studentId);
+
+            if (!studentName) {
+                console.warn(`Skipping record for unknown student ID: ${scan.studentId}`);
+                continue;
+            }
 
             const uniqueKey = `${scan.studentId}-${dateForDb}-${scan.subject}`;
             if (uniqueEntries.has(uniqueKey)) {
@@ -108,7 +119,6 @@ export async function batchRecordAttendanceAction(
 
         if (insertError) {
             console.error("Error inserting attendance records:", insertError);
-            // Check for unique constraint violation
             if (insertError.code === '23505') { // PostgreSQL unique violation
                 return { error: 'Some attendance records already exist and were not saved again.' };
             }
@@ -203,7 +213,7 @@ export async function recordAttendanceAction(
 }
 
 export async function createUserAction(
-  userData: Omit<User, 'id'> & { email: string; password?: string }
+  userData: Omit<User, 'id'> & { email: string; password?: string; group?: string }
 ): Promise<{ user?: User; error?: string }> {
   try {
     if (!userData.password) {
@@ -224,7 +234,7 @@ export async function createUserAction(
         name: userData.name,
         dob: userData.dob,
         type: userData.type,
-        subjects: Array.isArray(userData.subjects) ? userData.subjects : userData.subjects?.split(',').map(s => s.trim()),
+        subjects: Array.isArray(userData.subjects) ? userData.subjects : (userData.subjects as string)?.split(',').map(s => s.trim()),
         group: userData.group,
     };
 
