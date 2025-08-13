@@ -63,7 +63,7 @@ export async function batchRecordAttendanceAction(
 
         const today = format(new Date(), 'yyyy-MM-dd');
 
-        // Deduplicate student IDs
+        // Deduplicate student IDs before processing
         const uniqueStudentIds = [...new Set(studentIds)];
         
         const attendanceRecords = uniqueStudentIds.map(studentId => ({
@@ -73,6 +73,7 @@ export async function batchRecordAttendanceAction(
             marked_by: markerId,
         }));
 
+        // Use onConflict to prevent duplicates for the same student, date, and subject
         const { error: insertError, count } = await supabase
             .from('attendance')
             .insert(attendanceRecords, { onConflict: 'student_id, date, subject_code' });

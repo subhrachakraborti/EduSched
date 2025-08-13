@@ -45,11 +45,12 @@ export interface ScheduleEntry {
 
 export interface AttendanceEntry {
   id?: number;
-  student_id: string;
+  student_id: string; // This is a TEXT field referencing users.id
   date: string; // YYYY-MM-DD
   subject_code: string;
-  marked_by: string; // Firebase UID of admin/teacher
+  marked_by: string; // This is a TEXT field referencing users.id
   created_at?: string;
 }
 
     
+
