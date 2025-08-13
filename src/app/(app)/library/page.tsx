@@ -267,7 +267,7 @@ export default function LibraryPage() {
         <div className="space-y-6">
             <div>
                 <h1 className="text-2xl font-bold md:text-3xl">Library</h1>
-                <p className="text-muted-foreground">Search for a book by its code to issue it, or manage issued books.</p>
+                <p className="text-muted-foreground">Search for a book by its code.</p>
             </div>
 
             <Card>
