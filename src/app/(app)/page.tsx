@@ -28,11 +28,14 @@ function AttendanceGauge({ subject, present, total }: { subject: string, present
   const percentage = total > 0 ? (present / total) * 100 : 0;
   
   const needle = useMemo(() => {
-    const angle = 180 * (percentage / 100);
-    const length = 60;
-    const x = 80 + length * Math.cos(-angle * Math.PI / 180);
-    const y = 80 - length * Math.sin(-angle * Math.PI / 180);
-    return { x1: 80, y1: 80, x2: x, y2: y };
+    // Correct angle calculation: 180 degrees is 0%, 0 degrees is 100%
+    const angle = 180 - (180 * (percentage / 100));
+    const length = 60; // Length of the needle
+    const cx = 80; // Center x of the gauge container
+    const cy = 80; // Center y of the gauge container
+    const x = cx + length * Math.cos(-angle * Math.PI / 180);
+    const y = cy - length * Math.sin(-angle * Math.PI / 180);
+    return { x1: cx, y1: cy, x2: x, y2: y };
   }, [percentage]);
 
   return (
