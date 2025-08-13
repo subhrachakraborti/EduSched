@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSchedule } from "@/context/schedule-context";
 import {
   Table,
@@ -11,15 +11,108 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, FileWarning } from "lucide-react";
+import { CalendarDays, FileWarning, Target } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ScheduleEntry } from "@/lib/types";
+import type { ScheduleEntry, AttendanceEntry } from "@/lib/types";
 import { fetchScheduleAction } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
+import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import attendanceData from '@/lib/attendance.json';
 
+const GAUGE_COLORS = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
+const TOTAL_CLASSES_PER_SUBJECT = 20; // Mock total classes for percentage calculation
+
+function AttendanceGauge({ subject, present, total }: { subject: string, present: number, total: number }) {
+  const percentage = total > 0 ? (present / total) * 100 : 0;
+  
+  const needle = useMemo(() => {
+    const angle = 180 * (percentage / 100);
+    const length = 60;
+    const x = 80 + length * Math.cos(-angle * Math.PI / 180);
+    const y = 80 - length * Math.sin(-angle * Math.PI / 180);
+    return { x1: 80, y1: 80, x2: x, y2: y };
+  }, [percentage]);
+
+  return (
+    <div className="flex flex-col items-center justify-center text-center">
+       <div className="relative h-[80px] w-[160px]">
+         <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                dataKey="value"
+                startAngle={180}
+                endAngle={0}
+                data={[{value: 20}, {value: 20}, {value: 20}, {value: 20}, {value: 20}]}
+                cx="50%"
+                cy="100%"
+                outerRadius={60}
+                innerRadius={40}
+                fill="#8884d8"
+                paddingAngle={2}
+              >
+                {GAUGE_COLORS.map((color, index) => (
+                  <Cell key={`cell-${index}`} fill={color} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+           <svg className="absolute top-0 left-0 h-full w-full" style={{ overflow: 'visible' }}>
+            <line {...needle} stroke="hsl(var(--foreground))" strokeWidth={2} />
+            <circle cx={needle.x1} cy={needle.y1} r={4} fill="hsl(var(--foreground))" />
+          </svg>
+       </div>
+      <p className="mt-2 font-semibold capitalize">{subject}</p>
+      <p className="text-xl font-bold">{Math.round(percentage)}%</p>
+      <p className="text-xs text-muted-foreground">({present}/{total} classes)</p>
+    </div>
+  );
+}
+
+
+function StudentAttendanceSection({ studentId }: { studentId: string }) {
+    const studentAttendance = useMemo(() => {
+        const attendances: Record<string, number> = {};
+        (attendanceData as AttendanceEntry[])
+            .filter(entry => entry.student_id === studentId)
+            .forEach(entry => {
+                attendances[entry.subject_code] = (attendances[entry.subject_code] || 0) + 1;
+            });
+        return attendances;
+    }, [studentId]);
+
+    const subjects = Object.keys(studentAttendance);
+
+    if (subjects.length === 0) {
+        return null;
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex items-center gap-2">
+                    <Target className="h-6 w-6" />
+                    <CardTitle>Attendance Overview</CardTitle>
+                </div>
+                <CardDescription>Your attendance percentage for each subject.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                    {subjects.map(subject => (
+                        <AttendanceGauge 
+                            key={subject}
+                            subject={subject}
+                            present={studentAttendance[subject]}
+                            total={TOTAL_CLASSES_PER_SUBJECT}
+                        />
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
 
 export default function DashboardPage() {
   const { user, schedule, setSchedule, isLoading } = useSchedule();
@@ -102,9 +195,11 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold md:text-3xl">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Welcome to EduSched!
+          Welcome to EduSched, {user?.name}!
         </p>
       </div>
+      
+      {user?.type === 'student' && <StudentAttendanceSection studentId={user.id} />}
 
       <Card>
         <CardHeader>
