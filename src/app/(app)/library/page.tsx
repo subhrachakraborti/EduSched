@@ -1,14 +1,14 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSchedule } from '@/context/schedule-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { fetchBookDetailsAction, issueBookAction, fetchIssuedBooksAction } from '@/app/actions';
-import { Book, BookCheck, Library, Loader2, Search, X } from 'lucide-react';
+import { Book, BookCheck, Library, Loader2, Search, RefreshCcw } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import Image from 'next/image';
 import type { IssuedBook } from '@/lib/types';
@@ -22,7 +22,11 @@ interface BookDetails {
     coverUrl: string;
 }
 
-function IssuedBooksList() {
+interface IssuedBooksListRef {
+  refresh: () => void;
+}
+
+const IssuedBooksList = React.forwardRef<IssuedBooksListRef>((props, ref) => {
     const { user } = useSchedule();
     const { toast } = useToast();
     const [issuedBooks, setIssuedBooks] = useState<IssuedBook[]>([]);
@@ -43,13 +47,22 @@ function IssuedBooksList() {
     useEffect(() => {
         loadIssuedBooks();
     }, [loadIssuedBooks]);
+    
+    React.useImperativeHandle(ref, () => ({
+        refresh: loadIssuedBooks
+    }));
 
     return (
         <Card>
             <CardHeader>
-                <div className="flex items-center gap-2">
-                    <BookCheck className="h-6 w-6" />
-                    <CardTitle>My Issued Books</CardTitle>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <BookCheck className="h-6 w-6" />
+                        <CardTitle>My Issued Books</CardTitle>
+                    </div>
+                     <Button variant="ghost" size="icon" onClick={loadIssuedBooks} disabled={isLoading}>
+                        <RefreshCcw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+                    </Button>
                 </div>
                 <CardDescription>Books you have currently checked out from the library.</CardDescription>
             </CardHeader>
@@ -86,7 +99,10 @@ function IssuedBooksList() {
             </CardContent>
         </Card>
     );
-}
+});
+
+IssuedBooksList.displayName = 'IssuedBooksList';
+
 
 export default function LibraryPage() {
     const { user } = useSchedule();
@@ -98,6 +114,8 @@ export default function LibraryPage() {
     
     const [foundBook, setFoundBook] = useState<BookDetails | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const issuedBooksListRef = useRef<IssuedBooksListRef>(null);
     
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -129,8 +147,7 @@ export default function LibraryPage() {
             setIsModalOpen(false);
             setFoundBook(null);
             setBookCode('');
-            // Trigger a refresh of the issued books list by changing a state value it depends on, but we'll do it by re-calling the load function
-            // A better way would be a shared state management or context update. For now, we rely on the user seeing the new book on next load or refresh.
+            issuedBooksListRef.current?.refresh();
         }
         setIsIssuing(false);
     };
@@ -170,7 +187,7 @@ export default function LibraryPage() {
                 </CardContent>
             </Card>
             
-            {user?.type === 'student' && <IssuedBooksList />}
+            {user?.type === 'student' && <IssuedBooksList ref={issuedBooksListRef} />}
 
             {foundBook && (
                 <AlertDialog open={isModalOpen} onOpenChange={setIsModalOpen}>
