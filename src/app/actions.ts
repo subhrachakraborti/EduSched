@@ -219,4 +219,17 @@ export async function fetchStudentNamesAction(studentIds: string[]): Promise<{ d
     return { data: data ?? [] };
 }
 
+export async function fetchTeachersAction(): Promise<{ data?: User[], error?: string }> {
+    const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('type', 'teacher');
+
+    if (error) {
+        console.error('Error fetching teachers:', error);
+        return { error: 'Could not fetch teachers from the database.' };
+    }
+    return { data: data ?? [] };
+}
+
     

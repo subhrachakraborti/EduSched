@@ -1,8 +1,8 @@
 
 "use client";
 
-import React, { useMemo, useState } from 'react';
-import { useForm, type SubmitHandler, Controller, useFieldArray } from 'react-hook-form';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSchedule } from '@/context/schedule-context';
@@ -10,10 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Book, School, Users, Clock, Trash2, Loader2, FileWarning, UserPlus, PlusCircle } from 'lucide-react';
+import { Book, School, Users, Clock, Loader2, FileWarning, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { generateTimetableAction, createUserAction } from '@/app/actions';
+import { generateTimetableAction, createUserAction, fetchTeachersAction } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -21,23 +20,15 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
-import { CheckIcon } from 'lucide-react';
+import type { User } from '@/lib/types';
+import { Skeleton } from '@/components/ui/skeleton';
 
-// Schemas for new data structures
-const subjectSchema = z.object({ name: z.string().min(1, "Subject name is required") });
-const teacherSchema = z.object({ name: z.string().min(1, "Teacher name is required"), subjects: z.array(z.string()).min(1, "Assign at least one subject") });
-const classroomSchema = z.object({ name: z.string().min(1, "Classroom name is required"), subjects: z.array(z.string()).min(1, "Assign at least one subject") });
 const timeSlotSchema = z.object({ 
     day: z.string().min(1, "Day is required"),
     from: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:mm)"),
     to: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:mm)")
 });
 
-type SubjectFormData = z.infer<typeof subjectSchema>;
-type TeacherFormData = z.infer<typeof teacherSchema>;
-type ClassroomFormData = z.infer<typeof classroomSchema>;
 type TimeSlotFormData = z.infer<typeof timeSlotSchema>;
 
 const userSchema = z.object({
@@ -61,136 +52,81 @@ const userSchema = z.object({
 type UserFormData = z.infer<typeof userSchema>;
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const predefinedClassrooms = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2"];
 
-function MultiSelect({ control, name, options, placeholder }: { control: any, name: string, options: {value: string, label: string}[], placeholder: string }) {
-    const { fields, append, remove } = useFieldArray({ control, name });
-    const selectedValues = fields.map((field: any) => field.value);
-
+function SubjectsSection({ subjects }: { subjects: string[] }) {
     return (
-        <Popover>
-            <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" className="w-full justify-between">
-                    <span className="truncate">
-                        {selectedValues.length > 0 ? selectedValues.join(', ') : placeholder}
-                    </span>
-                    <PlusCircle className="h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command>
-                    <CommandInput placeholder="Search..." />
-                    <CommandEmpty>No subjects found.</CommandEmpty>
-                    <CommandGroup>
-                        {options.map((option) => (
-                            <CommandItem
-                                key={option.value}
-                                onSelect={() => {
-                                    const index = selectedValues.findIndex((v: string) => v === option.value);
-                                    if (index > -1) {
-                                        remove(index);
-                                    } else {
-                                        append({ value: option.value });
-                                    }
-                                }}
-                            >
-                                <CheckIcon
-                                    className={cn(
-                                        "mr-2 h-4 w-4",
-                                        selectedValues.includes(option.value) ? "opacity-100" : "opacity-0"
-                                    )}
+        <Card>
+            <CardHeader>
+                <CardTitle>Available Subjects</CardTitle>
+                <CardDescription>These are the subjects assigned to you. The timetable will be generated based on this list.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {subjects && subjects.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2 rounded-md border p-4 md:grid-cols-3 lg:grid-cols-4">
+                        {subjects.map(s => <div key={s} className="rounded-md bg-muted px-3 py-1 text-sm font-medium">{s}</div>)}
+                    </div>
+                ) : (
+                    <p className="text-sm text-muted-foreground">You are not assigned to any subjects.</p>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+function TeachersSection({ availableTeachers, selectedTeachers, onTeacherSelectionChange, isLoading }: { availableTeachers: User[], selectedTeachers: string[], onTeacherSelectionChange: (id: string, isSelected: boolean) => void, isLoading: boolean }) {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Available Teachers</CardTitle>
+                <CardDescription>Select the teachers who are available for this schedule.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 {isLoading ? (
+                    <div className="space-y-2">
+                        {Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+                    </div>
+                ) : availableTeachers.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border p-4 md:grid-cols-3 lg:grid-cols-4">
+                        {availableTeachers.map((teacher) => (
+                             <div key={teacher.id} className="flex items-center gap-2">
+                                <Checkbox
+                                    id={`teacher-${teacher.id}`}
+                                    checked={selectedTeachers.includes(teacher.id)}
+                                    onCheckedChange={(checked) => onTeacherSelectionChange(teacher.id, !!checked)}
                                 />
-                                {option.label}
-                            </CommandItem>
+                                <Label htmlFor={`teacher-${teacher.id}`} className="font-normal">{teacher.name}</Label>
+                            </div>
                         ))}
-                    </CommandGroup>
-                </Command>
-            </PopoverContent>
-        </Popover>
-    );
-}
-
-function SubjectsSection() {
-    const { subjects, addSubject, removeSubject } = useSchedule();
-    const { register, handleSubmit, reset, formState: { errors } } = useForm<SubjectFormData>({ resolver: zodResolver(subjectSchema) });
-    const onSubmit: SubmitHandler<SubjectFormData> = (data) => { addSubject(data); reset(); };
-    return (
-        <Card>
-            <CardHeader><CardTitle>Subjects</CardTitle></CardHeader>
-            <CardContent>
-                <form onSubmit={handleSubmit(onSubmit)} className="mb-4 flex gap-2">
-                    <Input {...register("name")} placeholder="New subject (e.g., Math101)" />
-                    <Button type="submit">Add</Button>
-                </form>
-                {errors.name && <p className="text-sm text-destructive mb-2">{errors.name.message}</p>}
-                <DataTable columns={['Subject']} data={subjects.map(s => [s.name])} onRemove={removeSubject} ids={subjects.map(s => s.id)} />
+                    </div>
+                ) : (
+                    <p className="text-sm text-muted-foreground">No teachers found in the system.</p>
+                )}
             </CardContent>
         </Card>
     );
 }
 
-function TeachersSection() {
-    const { teachers, addTeacher, removeTeacher, subjects } = useSchedule();
-    const { register, handleSubmit, control, reset, formState: { errors } } = useForm<TeacherFormData>({ resolver: zodResolver(teacherSchema), defaultValues: { subjects: [] }});
-    const onSubmit: SubmitHandler<TeacherFormData> = (data) => { addTeacher(data); reset(); };
-    const subjectOptions = subjects.map(s => ({ value: s.name, label: s.name }));
-
+function ClassroomsSection({ selectedClassrooms, onClassroomSelectionChange }: { selectedClassrooms: string[], onClassroomSelectionChange: (name: string, isSelected: boolean) => void }) {
     return (
         <Card>
-            <CardHeader><CardTitle>Teachers</CardTitle></CardHeader>
+            <CardHeader>
+                <CardTitle>Available Classrooms</CardTitle>
+                <CardDescription>Select the classrooms that are available for this schedule.</CardDescription>
+            </CardHeader>
             <CardContent>
-                <form onSubmit={handleSubmit(onSubmit)} className="mb-4 space-y-2">
-                    <Input {...register("name")} placeholder="Teacher's name" />
-                    <Controller
-                        control={control}
-                        name="subjects"
-                        render={({ field }) => (
-                            <MultiSelect
-                                control={control}
-                                name="subjects"
-                                options={subjectOptions}
-                                placeholder="Select subjects..."
+                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border p-4 md:grid-cols-3 lg:grid-cols-4">
+                    {predefinedClassrooms.map((room) => (
+                        <div key={room} className="flex items-center gap-2">
+                            <Checkbox
+                                id={`classroom-${room}`}
+                                checked={selectedClassrooms.includes(room)}
+                                onCheckedChange={(checked) => onClassroomSelectionChange(room, !!checked)}
                             />
-                        )}
-                    />
-                    <Button type="submit" className="w-full">Add Teacher</Button>
-                </form>
-                {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-                {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
-                <DataTable columns={['Teacher', 'Subjects']} data={teachers.map(t => [t.name, t.subjects.join(', ')])} onRemove={removeTeacher} ids={teachers.map(t => t.id)} />
-            </CardContent>
-        </Card>
-    );
-}
-
-function ClassroomsSection() {
-    const { classrooms, addClassroom, removeClassroom, subjects } = useSchedule();
-    const { register, handleSubmit, control, reset, formState: { errors } } = useForm<ClassroomFormData>({ resolver: zodResolver(classroomSchema), defaultValues: { subjects: [] } });
-    const onSubmit: SubmitHandler<ClassroomFormData> = (data) => { addClassroom(data); reset(); };
-    const subjectOptions = subjects.map(s => ({ value: s.name, label: s.name }));
-    
-    return (
-        <Card>
-            <CardHeader><CardTitle>Classrooms</CardTitle></CardHeader>
-            <CardContent>
-                <form onSubmit={handleSubmit(onSubmit)} className="mb-4 space-y-2">
-                    <Input {...register("name")} placeholder="Classroom name (e.g., Room 101)" />
-                     <Controller
-                        control={control}
-                        name="subjects"
-                        render={({ field }) => (
-                            <MultiSelect
-                                control={control}
-                                name="subjects"
-                                options={subjectOptions}
-                                placeholder="Select subjects for this room..."
-                            />
-                        )}
-                    />
-                    <Button type="submit" className="w-full">Add Classroom</Button>
-                </form>
-                {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-                {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
-                <DataTable columns={['Classroom', 'Allowed Subjects']} data={classrooms.map(c => [c.name, c.subjects.join(', ')])} onRemove={removeClassroom} ids={classrooms.map(c => c.id)} />
+                            <Label htmlFor={`classroom-${room}`} className="font-normal">{room}</Label>
+                        </div>
+                    ))}
+                </div>
             </CardContent>
         </Card>
     );
@@ -203,7 +139,10 @@ function TimeSlotsSection() {
     
     return (
         <Card>
-            <CardHeader><CardTitle>Time Slots</CardTitle></CardHeader>
+            <CardHeader>
+                <CardTitle>Time Slots</CardTitle>
+                <CardDescription>Define the time slots for classes throughout the week.</CardDescription>
+            </CardHeader>
             <CardContent>
                 <form onSubmit={handleSubmit(onSubmit)} className="mb-4 space-y-2">
                     <Controller
@@ -226,36 +165,23 @@ function TimeSlotsSection() {
                 </form>
                  {errors.day && <p className="text-sm text-destructive">{errors.day.message}</p>}
                  {(errors.from || errors.to) && <p className="text-sm text-destructive">Please enter valid start and end times (HH:mm).</p>}
-                <DataTable columns={['Day', 'From', 'To']} data={timeSlots.map(ts => [ts.day, ts.from, ts.to])} onRemove={removeTimeSlot} ids={timeSlots.map(ts => ts.id)} />
+                
+                <div className="max-h-60 overflow-y-auto rounded-md border">
+                    <ul className="divide-y">
+                        {timeSlots.length > 0 ? timeSlots.map(ts => (
+                            <li key={ts.id} className="flex items-center justify-between p-2 text-sm">
+                                <span>{ts.day}: {ts.from} - {ts.to}</span>
+                                <Button variant="ghost" size="icon" onClick={() => removeTimeSlot(ts.id)}>
+                                    <UserPlus className="h-4 w-4" />
+                                </Button>
+                            </li>
+                        )) : (
+                            <li className="p-4 text-center text-muted-foreground">No time slots added.</li>
+                        )}
+                    </ul>
+                </div>
             </CardContent>
         </Card>
-    );
-}
-
-function DataTable({ columns, data, onRemove, ids }: { columns: string[], data: string[][], onRemove: (id: string) => void, ids: string[] }) {
-    return (
-        <div className="max-h-60 overflow-y-auto rounded-md border">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        {columns.map(col => <TableHead key={col}>{col}</TableHead>)}
-                        <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {data.length > 0 ? data.map((row, rowIndex) => (
-                        <TableRow key={ids[rowIndex]}>
-                            {row.map((cell, cellIndex) => <TableCell key={cellIndex}>{cell}</TableCell>)}
-                            <TableCell className="text-right">
-                                <Button variant="ghost" size="icon" onClick={() => onRemove(ids[rowIndex])}>
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
-                            </TableCell>
-                        </TableRow>
-                    )) : <TableRow><TableCell colSpan={columns.length + 1}>No data added yet.</TableCell></TableRow>}
-                </TableBody>
-            </Table>
-        </div>
     );
 }
 
@@ -360,7 +286,7 @@ function UserManagementSection({ adminSubjects }: { adminSubjects: string[] }) {
                             control={control}
                             render={({ field }) => (
                                 <div className="grid grid-cols-2 gap-2 rounded-md border p-4 md:grid-cols-3">
-                                    {adminSubjects.map((subject) => (
+                                    {(adminSubjects || []).map((subject) => (
                                         <div key={subject} className="flex items-center gap-2">
                                             <Checkbox
                                                 id={`subject-${subject}`}
@@ -401,15 +327,33 @@ function UserManagementSection({ adminSubjects }: { adminSubjects: string[] }) {
 export default function DataManagementPage() {
   const { 
     user,
-    subjects,
-    teachers, 
-    classrooms,
     timeSlots,
     setIsLoading, setSchedule, isLoading
   } = useSchedule();
   
   const { toast } = useToast();
   const router = useRouter();
+
+  const [availableTeachers, setAvailableTeachers] = useState<User[]>([]);
+  const [isTeachersLoading, setIsTeachersLoading] = useState(true);
+  const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
+  const [selectedClassrooms, setSelectedClassrooms] = useState<string[]>([]);
+
+  useEffect(() => {
+      const loadTeachers = async () => {
+          setIsTeachersLoading(true);
+          const result = await fetchTeachersAction();
+          if (result.error) {
+              toast({ variant: 'destructive', title: 'Failed to load teachers', description: result.error });
+          } else {
+              setAvailableTeachers(result.data || []);
+          }
+          setIsTeachersLoading(false);
+      };
+      if(user?.type === 'admin') {
+        loadTeachers();
+      }
+  }, [user, toast]);
 
   if (user?.type !== 'admin') {
     return (
@@ -423,13 +367,21 @@ export default function DataManagementPage() {
     );
   }
 
+  const handleTeacherSelection = (id: string, isSelected: boolean) => {
+      setSelectedTeachers(prev => isSelected ? [...prev, id] : prev.filter(tId => tId !== id));
+  }
+
+  const handleClassroomSelection = (name: string, isSelected: boolean) => {
+      setSelectedClassrooms(prev => isSelected ? [...prev, name] : prev.filter(cName => cName !== name));
+  }
+
   const handleGenerate = async () => {
     setIsLoading(true);
     
     // Convert the data to the format expected by the AI
-    const coursesForAI = subjects.map(s => s.name);
-    const teachersForAI = teachers.map(t => `${t.name} (can teach: ${t.subjects.join(', ')})`);
-    const classroomsForAI = classrooms.map(c => `${c.name} (for subjects: ${c.subjects.join(', ')})`);
+    const coursesForAI = user.subjects || [];
+    const teachersForAI = availableTeachers.filter(t => selectedTeachers.includes(t.id)).map(t => `${t.name} (can teach: ${t.subjects?.join(', ') || 'N/A'})`);
+    const classroomsForAI = selectedClassrooms;
     const timeSlotsForAI = timeSlots.map(ts => `${ts.day} ${ts.from}-${ts.to}`);
 
     // For now, student groups are managed via user creation. We need a way to get them for the AI.
@@ -462,12 +414,12 @@ export default function DataManagementPage() {
   };
 
   const isGenerationDisabled = useMemo(() => {
-    return isLoading || [subjects, teachers, classrooms, timeSlots].some(arr => arr.length === 0);
-  }, [isLoading, subjects, teachers, classrooms, timeSlots]);
+    return isLoading || !user.subjects?.length || !selectedTeachers.length || !selectedClassrooms.length || !timeSlots.length;
+  }, [isLoading, user.subjects, selectedTeachers, selectedClassrooms, timeSlots]);
 
   const adminSubjects = useMemo(() => {
-    return subjects.map(s => s.name) || [];
-  }, [subjects]);
+    return user.subjects || [];
+  }, [user.subjects]);
 
   return (
     <div className="space-y-6">
@@ -485,20 +437,28 @@ export default function DataManagementPage() {
       <Tabs defaultValue="subjects" className="w-full">
          <div className="overflow-x-auto pb-2">
            <TabsList className="inline-grid w-max grid-flow-col">
-            <TabsTrigger value="subjects">Subjects</TabsTrigger>
-            <TabsTrigger value="teachers">Teachers</TabsTrigger>
-            <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
-            <TabsTrigger value="time-slots">Time Slots</TabsTrigger>
+            <TabsTrigger value="subjects"><Book className="mr-2 h-4 w-4" />Subjects</TabsTrigger>
+            <TabsTrigger value="teachers"><Users className="mr-2 h-4 w-4" />Teachers</TabsTrigger>
+            <TabsTrigger value="classrooms"><School className="mr-2 h-4 w-4" />Classrooms</TabsTrigger>
+            <TabsTrigger value="time-slots"><Clock className="mr-2 h-4 w-4" />Time Slots</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="subjects">
-          <SubjectsSection />
+          <SubjectsSection subjects={adminSubjects} />
         </TabsContent>
         <TabsContent value="teachers">
-          <TeachersSection />
+          <TeachersSection 
+            availableTeachers={availableTeachers} 
+            selectedTeachers={selectedTeachers}
+            onTeacherSelectionChange={handleTeacherSelection}
+            isLoading={isTeachersLoading}
+          />
         </TabsContent>
         <TabsContent value="classrooms">
-          <ClassroomsSection />
+          <ClassroomsSection 
+            selectedClassrooms={selectedClassrooms}
+            onClassroomSelectionChange={handleClassroomSelection}
+          />
         </TabsContent>
         <TabsContent value="time-slots">
           <TimeSlotsSection />
