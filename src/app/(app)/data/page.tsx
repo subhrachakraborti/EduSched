@@ -280,25 +280,27 @@ export default function DataManagementPage() {
 
   return (
     <div className="space-y-6">
-       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">Data Management</h1>
           <p className="text-muted-foreground">Input all necessary data to generate a timetable.</p>
         </div>
-        <Button onClick={handleGenerate} disabled={isGenerationDisabled} size="lg">
+        <Button onClick={handleGenerate} disabled={isGenerationDisabled} size="lg" className="w-full md:w-auto">
           {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Generate Timetable
         </Button>
       </div>
       
       <Tabs defaultValue="courses" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
-          <TabsTrigger value="courses">Courses</TabsTrigger>
-          <TabsTrigger value="teachers">Teachers</TabsTrigger>
-          <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
-          <TabsTrigger value="time-slots">Time Slots</TabsTrigger>
-          <TabsTrigger value="student-groups">Student Groups</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto pb-2">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="courses">Courses</TabsTrigger>
+            <TabsTrigger value="teachers">Teachers</TabsTrigger>
+            <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
+            <TabsTrigger value="time-slots">Time Slots</TabsTrigger>
+            <TabsTrigger value="student-groups">Student Groups</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="courses">
           <DataSection title="Courses" Icon={Book} data={courses} onAdd={addCourse} onRemove={removeCourse} formType="name" />
         </TabsContent>
@@ -323,5 +325,3 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
-    
