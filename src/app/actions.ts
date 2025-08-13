@@ -2,7 +2,7 @@
 'use server';
 
 import { generateSchedule } from '@/ai/flows/generate-schedule';
-import type { ScheduleEntry, User, AttendanceEntry } from '@/lib/types';
+import type { ScheduleEntry, User } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { getFirebaseAdmin } from '@/lib/firebase-admin';
 import { parse, isValid, format } from 'date-fns';
@@ -65,44 +65,24 @@ export async function batchRecordAttendanceAction(
 
         // Deduplicate student IDs
         const uniqueStudentIds = [...new Set(studentIds)];
-
-        // Check for existing records for these students for this subject today
-        const { data: existingRecords, error: checkError } = await supabase
-            .from('attendance')
-            .select('student_id')
-            .eq('date', today)
-            .eq('subject_code', subjectCode)
-            .in('student_id', uniqueStudentIds);
-
-        if (checkError) {
-            console.error('Error checking for existing attendance:', checkError);
-            return { error: 'Failed to check for existing attendance records.' };
-        }
-
-        const existingStudentIds = new Set(existingRecords.map(r => r.student_id));
-        const newStudentIds = uniqueStudentIds.filter(id => !existingStudentIds.has(id));
-
-        if (newStudentIds.length === 0) {
-            return { error: 'All scanned students have already been marked for this session.' };
-        }
         
-        const attendanceRecords = newStudentIds.map(studentId => ({
+        const attendanceRecords = uniqueStudentIds.map(studentId => ({
             student_id: studentId,
             date: today,
             subject_code: subjectCode,
             marked_by: markerId,
         }));
 
-        const { error: insertError } = await supabase
+        const { error: insertError, count } = await supabase
             .from('attendance')
-            .insert(attendanceRecords);
+            .insert(attendanceRecords, { onConflict: 'student_id, date, subject_code' });
 
         if (insertError) {
             console.error("Error inserting attendance records:", insertError);
             return { error: 'Failed to save attendance records to the database. ' + insertError.message };
         }
 
-        return { success: true, count: attendanceRecords.length };
+        return { success: true, count: count ?? 0 };
 
     } catch (e: any) {
         console.error('Failed to record attendance:', e);
@@ -150,23 +130,6 @@ export async function recordAttendanceAction(
         }
         const studentName = studentData.name;
 
-        const { data: existingAttendance, error: checkError } = await supabase
-            .from('attendance')
-            .select('id')
-            .eq('student_id', studentId)
-            .eq('date', dateForDb)
-            .eq('subject_code', subject)
-            .limit(1);
-
-        if (checkError) {
-            console.error('Error checking attendance:', checkError.message);
-            return { error: 'Failed to check existing attendance.' };
-        }
-
-        if (existingAttendance && existingAttendance.length > 0) {
-            return { error: `Attendance for ${studentName} already recorded for this subject today.` };
-        }
-
         const { error: insertError } = await supabase
             .from('attendance')
             .insert({
@@ -174,7 +137,7 @@ export async function recordAttendanceAction(
                 date: dateForDb,
                 subject_code: subject,
                 marked_by: markerId,
-            });
+            }, { onConflict: 'student_id, date, subject_code' });
         
         if (insertError) {
             console.error('Error inserting attendance:', insertError);
@@ -237,4 +200,20 @@ export async function createUserAction(
     }
     return { error: errorMessage };
   }
+}
+
+export async function fetchStudentNamesAction(studentIds: string[]): Promise<{ data?: {id: string, name: string}[], error?: string }> {
+    if (!studentIds || studentIds.length === 0) {
+        return { data: [] };
+    }
+    const { data, error } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', studentIds);
+
+    if (error) {
+        console.error('Error fetching student names:', error);
+        return { error: 'Could not fetch student names.' };
+    }
+    return { data: data ?? [] };
 }

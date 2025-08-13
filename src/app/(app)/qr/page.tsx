@@ -10,7 +10,7 @@ import { useSchedule } from "@/context/schedule-context";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import jsQR from "jsqr";
-import { batchRecordAttendanceAction } from "@/app/actions";
+import { batchRecordAttendanceAction, fetchStudentNamesAction } from "@/app/actions";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from 'date-fns';
@@ -21,7 +21,7 @@ import type { User } from "@/lib/types";
 
 type SessionScan = {
   studentId: string;
-  studentName: string; // Will be populated after fetching
+  studentName: string; 
 };
 
 export default function QrPage() {
@@ -38,14 +38,11 @@ export default function QrPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Holds validated student data for the current session
   const [sessionScans, setSessionScans] = useState<SessionScan[]>([]);
-  // Holds raw QR data to prevent re-processing the same code
   const scannedCodesThisSession = useRef(new Set<string>());
   
   const [sessionSubject, setSessionSubject] = useState('');
   
-  // Generate student QR code
   const handleGenerateStudentQr = () => {
     if (user?.type === 'student' && selectedSubject) {
       const today = new Date();
@@ -61,7 +58,6 @@ export default function QrPage() {
     }
   };
 
-  // Start the camera and scanning session
   const startScan = async () => {
     if (!sessionSubject) {
         toast({
@@ -71,8 +67,6 @@ export default function QrPage() {
         });
         return;
     }
-    scannedCodesThisSession.current.clear();
-    setSessionScans([]);
     setIsScanning(true);
     
     try {
@@ -93,7 +87,6 @@ export default function QrPage() {
     }
   };
 
-  // Stop the camera
   const stopScan = () => {
     setIsScanning(false);
     if (videoRef.current && videoRef.current.srcObject) {
@@ -103,15 +96,12 @@ export default function QrPage() {
     }
   };
   
-  // Reset the current scanning session
   const resetSession = () => {
     stopScan();
     setSessionScans([]);
     scannedCodesThisSession.current.clear();
-    setSessionSubject('');
   };
 
-  // Save all collected scans to Supabase
   const handleSaveAttendance = async () => {
       if (sessionScans.length === 0) {
           toast({ title: "No new attendance records to save."});
@@ -125,19 +115,19 @@ export default function QrPage() {
           toast({ variant: 'destructive', title: 'Save Failed', description: result.error});
       }
       if (result.success) {
-          toast({ title: 'Success!', description: `${result.count} attendance records saved.`});
-          setSessionScans([]); // Clear the list after saving
-          scannedCodesThisSession.current.clear();
+          toast({ title: 'Success!', description: `${result.count} new attendance records saved.`});
+          // Clear the list after saving, but keep scanned codes to prevent re-adding during the same session
+          setSessionScans([]);
       }
       setIsSaving(false);
   }
 
-  // Download the current session's attendance as a PDF
-  const downloadAttendancePdf = () => {
+  const downloadAttendancePdf = async () => {
     if (sessionScans.length === 0) {
         toast({ title: "No attendance to download."});
         return;
     }
+
     const doc = new jsPDF();
     doc.setFontSize(18);
     doc.text("Attendance Report", 14, 22);
@@ -157,6 +147,54 @@ export default function QrPage() {
     doc.save(`attendance-${sessionSubject}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
+  const processQrCode = useCallback(async (qrData: string) => {
+    // 1. Check if we've already processed this exact QR code string in this session
+    if (scannedCodesThisSession.current.has(qrData)) {
+      return;
+    }
+    scannedCodesThisSession.current.add(qrData);
+
+    // 2. Validate the format
+    const match = qrData.match(/^([^.]+)\.(\d{6})\.(.+)$/);
+    if (!match) {
+      toast({ variant: 'destructive', title: 'Invalid QR Format' });
+      return;
+    }
+
+    const [, studentId, , subjectFromQR] = match;
+
+    // 3. Check if subject matches the current session
+    if (subjectFromQR !== sessionSubject) {
+      toast({
+        variant: 'destructive',
+        title: 'Subject Mismatch',
+        description: `This QR code is for ${subjectFromQR}, but the session is for ${sessionSubject}.`,
+      });
+      return;
+    }
+
+    // 4. Check if student is already in the list for this session
+    if (sessionScans.some(s => s.studentId === studentId)) {
+        // You might want to give a toast feedback here, or just ignore it silently
+        return;
+    }
+
+    // 5. Fetch student name and add to the list
+    const { data, error } = await fetchStudentNamesAction([studentId]);
+    if (error || !data || data.length === 0) {
+        toast({ variant: 'destructive', title: 'Student Not Found', description: `Could not find a user for ID: ${studentId}` });
+        return;
+    }
+    
+    const studentName = data[0].name;
+    setSessionScans(prev => [...prev, { studentId, studentName }]);
+    toast({
+        title: 'Student Scanned',
+        description: `Added ${studentName} to the session.`
+    });
+
+  }, [sessionSubject, toast, sessionScans]);
+
 
   // Main scanning loop
   useEffect(() => {
@@ -171,7 +209,7 @@ export default function QrPage() {
 
     let animationFrameId: number;
 
-    const tick = async () => {
+    const tick = () => {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.height = video.videoHeight;
         canvas.width = video.videoWidth;
@@ -181,37 +219,8 @@ export default function QrPage() {
           inversionAttempts: "dontInvert",
         });
 
-        if (code && code.data && !scannedCodesThisSession.current.has(code.data)) {
-          scannedCodesThisSession.current.add(code.data);
-          
-          const match = code.data.match(/^([^.]+)\.(\d{6})\.(.+)$/);
-          if (match) {
-            const [, studentId, , subjectFromQR] = match;
-
-            if (subjectFromQR !== sessionSubject) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Subject Mismatch',
-                    description: `This QR code is for ${subjectFromQR}, but the session is for ${sessionSubject}.`,
-                });
-                return;
-            }
-            
-            // For now, we add the ID as the name, will be replaced by a server call if needed for display
-            // But for this simplified version, we just need the ID for saving.
-            setSessionScans(prev => {
-                const alreadyScanned = prev.some(s => s.studentId === studentId);
-                if (alreadyScanned) return prev;
-                // For this workflow, we'll just use the ID and fetch all names upon saving/downloading.
-                // To display the name live, a fetch-per-scan would be needed. Let's keep it simple for now.
-                return [...prev, { studentId, studentName: studentId }];
-            });
-
-            toast({
-                title: 'Student Scanned',
-                description: `Added ${studentId} to the session for ${subjectFromQR}.`
-            });
-          }
+        if (code && code.data) {
+           processQrCode(code.data);
         }
       }
       if (isScanning) {
@@ -224,7 +233,7 @@ export default function QrPage() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isScanning, hasCameraPermission, sessionSubject, toast]);
+  }, [isScanning, hasCameraPermission, processQrCode]);
 
 
   const renderScanner = () => {
@@ -311,7 +320,7 @@ export default function QrPage() {
                       <li key={`${scan.studentId}-${i}`} className="flex items-center justify-between p-1">
                         <span className="flex items-center gap-2">
                             <UserCheck className="h-4 w-4 text-green-500" />
-                            {scan.studentId}
+                            {scan.studentName}
                         </span>
                       </li>
                   ))}
