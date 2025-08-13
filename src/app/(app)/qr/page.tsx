@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from 'date-fns';
 import jsPDF from "jspdf";
+import 'jspdf-autotable';
 import type { AttendanceEntry, User } from "@/lib/types";
 
 type SessionScan = {
