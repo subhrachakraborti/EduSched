@@ -5,7 +5,7 @@ import { generateSchedule } from '@/ai/flows/generate-schedule';
 import type { ScheduleEntry, User } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { getFirebaseAdmin } from '@/lib/firebase-admin';
-import { parse } from 'date-fns';
+import { parse, isValid } from 'date-fns';
 
 export async function generateTimetableAction(
   courses: string[],
@@ -66,9 +66,12 @@ export async function recordAttendanceAction(
         }
         
         const parsedDate = parse(dateStr, 'ddMMyy', new Date());
-        if (isNaN(parsedDate.getTime())) {
+        
+        if (!isValid(parsedDate)) {
+            console.error(`Invalid date parsed from QR code: ${dateStr}`);
             return { error: 'Invalid date format in QR code.'};
         }
+
         const dateForDb = parsedDate.toISOString().split('T')[0]; // Format as YYYY-MM-DD
 
         const { data: studentData, error: studentError } = await supabase
@@ -79,8 +82,8 @@ export async function recordAttendanceAction(
             .single();
 
         if (studentError || !studentData) {
-            console.error("Student not found error:", studentError)
-            return { error: 'Student not found.' };
+            console.error("Student not found error:", studentError);
+            return { error: `Student not found for ID: ${studentId}` };
         }
         const studentName = studentData.name;
 
@@ -93,12 +96,12 @@ export async function recordAttendanceAction(
             .limit(1);
 
         if (checkError) {
-            console.error('Error checking attendance:', checkError);
+            console.error('Error checking attendance:', checkError.message);
             return { error: 'Failed to check existing attendance.' };
         }
 
         if (existingAttendance && existingAttendance.length > 0) {
-            return { error: `Attendance for ${studentName} already recorded.` };
+            return { error: `Attendance for ${studentName} already recorded for this subject today.` };
         }
 
         const { error: insertError } = await supabase
@@ -176,5 +179,3 @@ export async function createUserAction(
     return { error: errorMessage };
   }
 }
-
-    

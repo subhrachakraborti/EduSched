@@ -97,7 +97,6 @@ export default function QrPage() {
     }
     scannedCodesThisSession.current.add(data);
 
-    // Use a regex to check for the new student QR code format: <firebaseid>.ddmmyy.<subject>
     const isStudentQR = /^([^.]+)\.(\d{6})\.(.+)$/.test(data);
 
     if (!isStudentQR) {
@@ -287,7 +286,7 @@ export default function QrPage() {
           <CardHeader>
             <CardTitle>Your Static QR Code</CardTitle>
             <CardDescription>This is your static identification QR code.</CardDescription>
-          </CardHeader>
+          </Header>
           <CardContent>
             {qrCodeUrl && (
               <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
