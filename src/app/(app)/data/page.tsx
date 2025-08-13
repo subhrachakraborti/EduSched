@@ -292,7 +292,7 @@ export default function DataManagementPage() {
       </div>
       
       <Tabs defaultValue="courses" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
           <TabsTrigger value="courses">Courses</TabsTrigger>
           <TabsTrigger value="teachers">Teachers</TabsTrigger>
           <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
@@ -323,7 +323,5 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
-    
 
     
