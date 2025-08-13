@@ -175,7 +175,7 @@ export async function createUserAction(
         name: userData.name,
         dob: userData.dob,
         type: userData.type,
-        subjects: Array.isArray(userData.subjects) ? userData.subjects : (userData.subjects as string)?.split(',').map(s => s.trim()),
+        subjects: userData.subjects, // This will now be an array
         group: userData.type === 'student' ? userData.group : undefined,
     };
 
@@ -218,3 +218,5 @@ export async function fetchStudentNamesAction(studentIds: string[]): Promise<{ d
     }
     return { data: data ?? [] };
 }
+
+    

@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type InputForm = {
   name: string;
@@ -34,7 +35,7 @@ const userSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   dob: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date format." }),
   type: z.enum(["student", "teacher"]),
-  subjects: z.string().min(1, { message: "Subjects are required." }),
+  subjects: z.array(z.string()).min(1, { message: "At least one subject must be selected." }),
   group: z.string().optional(),
 }).refine(data => {
     if (data.type === 'student' && !data.group) {
@@ -103,7 +104,7 @@ function DataSection<T extends { id: string; name: string } | { id: string; slot
   );
 }
 
-function UserManagementSection() {
+function UserManagementSection({ adminSubjects }: { adminSubjects: string[] }) {
     const { toast } = useToast();
     const [isCreatingUser, setIsCreatingUser] = useState(false);
     const {
@@ -115,7 +116,7 @@ function UserManagementSection() {
         formState: { errors },
     } = useForm<UserFormData>({
         resolver: zodResolver(userSchema),
-        defaultValues: { type: "student" }
+        defaultValues: { type: "student", subjects: [] }
     });
     
     const userType = watch("type");
@@ -197,9 +198,30 @@ function UserManagementSection() {
                         />
                     </div>
                     
-                    <div className="space-y-2">
-                        <Label htmlFor="subjects">Subjects</Label>
-                        <Input id="subjects" {...register("subjects")} placeholder="Comma-separated, e.g., Mathematics,Physics" />
+                    <div className="space-y-3">
+                        <Label>Subjects</Label>
+                        <Controller
+                            name="subjects"
+                            control={control}
+                            render={({ field }) => (
+                                <div className="grid grid-cols-2 gap-2 rounded-md border p-4 md:grid-cols-3">
+                                    {adminSubjects.map((subject) => (
+                                        <div key={subject} className="flex items-center gap-2">
+                                            <Checkbox
+                                                id={`subject-${subject}`}
+                                                checked={field.value?.includes(subject)}
+                                                onCheckedChange={(checked) => {
+                                                    return checked
+                                                        ? field.onChange([...(field.value || []), subject])
+                                                        : field.onChange(field.value?.filter((value) => value !== subject));
+                                                }}
+                                            />
+                                            <Label htmlFor={`subject-${subject}`} className="font-normal">{subject}</Label>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        />
                         {errors.subjects && <p className="text-sm text-destructive">{errors.subjects.message}</p>}
                     </div>
 
@@ -278,6 +300,10 @@ export default function DataManagementPage() {
     return isLoading || [courses, teachers, classrooms, timeSlots, studentGroups].some(arr => arr.length === 0);
   }, [isLoading, courses, teachers, classrooms, timeSlots, studentGroups]);
 
+  const adminSubjects = useMemo(() => {
+    return user?.subjects || [];
+  }, [user]);
+
   return (
     <div className="space-y-6">
        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -293,7 +319,7 @@ export default function DataManagementPage() {
       
       <Tabs defaultValue="courses" className="w-full">
         <div className="overflow-x-auto pb-2">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="inline-grid w-full grid-cols-2 sm:grid-cols-5">
             <TabsTrigger value="courses">Courses</TabsTrigger>
             <TabsTrigger value="teachers">Teachers</TabsTrigger>
             <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
@@ -320,8 +346,10 @@ export default function DataManagementPage() {
       
       <Separator />
 
-      <UserManagementSection />
+      <UserManagementSection adminSubjects={adminSubjects} />
 
     </div>
   );
 }
+
+    
