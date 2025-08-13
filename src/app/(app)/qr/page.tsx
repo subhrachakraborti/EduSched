@@ -38,10 +38,14 @@ export default function QrPage() {
   const scannedCodesThisSession = useRef(new Set<string>());
   
   useEffect(() => {
-    if (user?.type === 'teacher') {
-      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(user.id)}`);
+    // For teachers, we generate a static ID code that doesn't change.
+    // We only do this once on component mount if the user is a teacher.
+    if (user?.type === 'teacher' && !qrCodeUrl) {
+      const dataToEncode = `${user.id}`;
+      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
     }
-  }, [user]);
+  }, [user, qrCodeUrl]);
+
 
   const handleGenerateStudentQr = () => {
     if (user?.type === 'student' && selectedSubject) {
@@ -97,6 +101,7 @@ export default function QrPage() {
     }
     scannedCodesThisSession.current.add(data);
 
+    // Updated regex to match the new format: <firebaseid>.ddmmyy.subject
     const isStudentQR = /^([^.]+)\.(\d{6})\.(.+)$/.test(data);
 
     if (!isStudentQR) {
@@ -282,19 +287,21 @@ export default function QrPage() {
     }
     if (user?.type === 'teacher') {
       return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Your Static QR Code</CardTitle>
-            <CardDescription>This is your static identification QR code.</CardDescription>
-          </Header>
-          <CardContent>
-            {qrCodeUrl && (
-              <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
-                <Image src={qrCodeUrl} alt="Teacher QR Code" width={200} height={200} className="rounded-md" />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Static QR Code</CardTitle>
+              <CardDescription>This is your static identification QR code.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {qrCodeUrl && (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
+                  <Image src={qrCodeUrl} alt="Teacher QR Code" width={200} height={200} className="rounded-md" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
       );
     }
     return null;
@@ -305,7 +312,9 @@ export default function QrPage() {
       <h1 className="text-2xl font-bold md:text-3xl">QR Tools</h1>
       <canvas ref={canvasRef} style={{ display: "none" }} />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {renderQrGenerator()}
+        <div className="flex flex-col gap-6">
+          {renderQrGenerator()}
+        </div>
         {renderScanner()}
       </div>
     </div>
