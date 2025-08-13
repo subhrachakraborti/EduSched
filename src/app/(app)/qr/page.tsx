@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, Video, VideoOff, Download, Save, Loader2, UserCheck } from "lucide-react";
+import { QrCode, Video, VideoOff, Download, Save, Loader2, UserCheck, Trash2 } from "lucide-react";
 import { useSchedule } from "@/context/schedule-context";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -16,13 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format } from 'date-fns';
 import jsPDF from "jspdf";
 import 'jspdf-autotable';
-import type { AttendanceEntry, User } from "@/lib/types";
+import type { User } from "@/lib/types";
+
 
 type SessionScan = {
   studentId: string;
-  studentName: string;
-  date: string;
-  subject: string;
+  studentName: string; // Will be populated after fetching
 };
 
 export default function QrPage() {
@@ -44,6 +43,8 @@ export default function QrPage() {
   // Holds raw QR data to prevent re-processing the same code
   const scannedCodesThisSession = useRef(new Set<string>());
   
+  const [sessionSubject, setSessionSubject] = useState('');
+  
   // Generate student QR code
   const handleGenerateStudentQr = () => {
     if (user?.type === 'student' && selectedSubject) {
@@ -59,17 +60,17 @@ export default function QrPage() {
         });
     }
   };
-  
-  // Generate teacher's static QR code
-  useEffect(() => {
-    if (user?.type === 'teacher' && !qrCodeUrl) {
-      const dataToEncode = `${user.id}`;
-      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataToEncode)}`);
-    }
-  }, [user, qrCodeUrl]);
 
   // Start the camera and scanning session
   const startScan = async () => {
+    if (!sessionSubject) {
+        toast({
+            variant: 'destructive',
+            title: 'No Subject Selected',
+            description: 'Please select a subject for this attendance session.',
+        });
+        return;
+    }
     scannedCodesThisSession.current.clear();
     setSessionScans([]);
     setIsScanning(true);
@@ -102,6 +103,13 @@ export default function QrPage() {
     }
   };
   
+  // Reset the current scanning session
+  const resetSession = () => {
+    stopScan();
+    setSessionScans([]);
+    scannedCodesThisSession.current.clear();
+    setSessionSubject('');
+  };
 
   // Save all collected scans to Supabase
   const handleSaveAttendance = async () => {
@@ -110,7 +118,8 @@ export default function QrPage() {
           return;
       }
       setIsSaving(true);
-      const result = await batchRecordAttendanceAction(sessionScans, user!.id);
+      const studentIds = sessionScans.map(scan => scan.studentId);
+      const result = await batchRecordAttendanceAction(studentIds, sessionSubject, user!.id);
 
       if (result.error) {
           toast({ variant: 'destructive', title: 'Save Failed', description: result.error});
@@ -135,23 +144,17 @@ export default function QrPage() {
     doc.setFontSize(11);
     doc.setTextColor(100);
     doc.text(`Session Date: ${format(new Date(), 'yyyy-MM-dd')}`, 14, 30);
+    doc.text(`Subject: ${sessionSubject}`, 14, 36);
     
-    const tableData = sessionScans.map(scan => [scan.studentName, format(parseDdMMyy(scan.date), 'yyyy-MM-dd'), scan.subject]);
+    const tableData = sessionScans.map(scan => [scan.studentName, format(new Date(), 'yyyy-MM-dd'), sessionSubject]);
     
     (doc as any).autoTable({
-        startY: 35,
+        startY: 42,
         head: [['Student Name', 'Date', 'Subject']],
         body: tableData,
     });
 
-    doc.save(`attendance-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
-  };
-
-  const parseDdMMyy = (dateStr: string) => {
-    const day = parseInt(dateStr.substring(0, 2), 10);
-    const month = parseInt(dateStr.substring(2, 4), 10) - 1; // Month is 0-indexed
-    const year = parseInt(dateStr.substring(4, 6), 10) + 2000;
-    return new Date(year, month, day);
+    doc.save(`attendance-${sessionSubject}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
 
@@ -168,7 +171,7 @@ export default function QrPage() {
 
     let animationFrameId: number;
 
-    const tick = () => {
+    const tick = async () => {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.height = video.videoHeight;
         canvas.width = video.videoWidth;
@@ -179,25 +182,35 @@ export default function QrPage() {
         });
 
         if (code && code.data && !scannedCodesThisSession.current.has(code.data)) {
-          // This is a new code, let's process it
           scannedCodesThisSession.current.add(code.data);
           
           const match = code.data.match(/^([^.]+)\.(\d{6})\.(.+)$/);
           if (match) {
-            const [, studentId, dateStr, subject] = match;
+            const [, studentId, , subjectFromQR] = match;
+
+            if (subjectFromQR !== sessionSubject) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Subject Mismatch',
+                    description: `This QR code is for ${subjectFromQR}, but the session is for ${sessionSubject}.`,
+                });
+                return;
+            }
             
+            // For now, we add the ID as the name, will be replaced by a server call if needed for display
+            // But for this simplified version, we just need the ID for saving.
             setSessionScans(prev => {
-                const alreadyScanned = prev.some(s => s.studentId === studentId && s.subject === subject);
+                const alreadyScanned = prev.some(s => s.studentId === studentId);
                 if (alreadyScanned) return prev;
-                // In a real app, you'd fetch the name here. We do it on save now.
-                // For UI, we show the ID until we have the name. The name will be populated in batch action.
-                return [...prev, { studentId, studentName: studentId, date: dateStr, subject }];
+                // For this workflow, we'll just use the ID and fetch all names upon saving/downloading.
+                // To display the name live, a fetch-per-scan would be needed. Let's keep it simple for now.
+                return [...prev, { studentId, studentName: studentId }];
             });
 
             toast({
                 title: 'Student Scanned',
-                description: `Added ${studentId} to the session.`
-            })
+                description: `Added ${studentId} to the session for ${subjectFromQR}.`
+            });
           }
         }
       }
@@ -211,7 +224,7 @@ export default function QrPage() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isScanning, hasCameraPermission]);
+  }, [isScanning, hasCameraPermission, sessionSubject, toast]);
 
 
   const renderScanner = () => {
@@ -220,9 +233,27 @@ export default function QrPage() {
         <Card>
           <CardHeader>
             <CardTitle>Attendance Scanner</CardTitle>
-            <CardDescription>Scan student QR codes. Save the session when done.</CardDescription>
+            <CardDescription>Select a subject, then scan student QR codes. Save the session when done.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4">
+             <div className="w-full space-y-2">
+                <Label htmlFor="session-subject">Session Subject</Label>
+                 <Select onValueChange={setSessionSubject} value={sessionSubject} disabled={isScanning}>
+                    <SelectTrigger id="session-subject">
+                        <SelectValue placeholder="Select subject for this session" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {user?.subjects && user.subjects.length > 0 ? (
+                            user.subjects.map(subjectCode => (
+                                <SelectItem key={subjectCode} value={subjectCode}>{subjectCode}</SelectItem>
+                            ))
+                        ) : (
+                            <SelectItem value="none" disabled>No subjects assigned</SelectItem>
+                        )}
+                    </SelectContent>
+                </Select>
+            </div>
+            
             <div className="relative h-64 w-full overflow-hidden rounded-lg border-2 border-dashed bg-card-foreground/5">
               {isScanning ? (
                 <>
@@ -239,7 +270,7 @@ export default function QrPage() {
             
             <div className="flex w-full items-center justify-center gap-2">
                 {!isScanning ? (
-                    <Button onClick={startScan} className="flex-1 bg-accent hover:bg-accent/90">
+                    <Button onClick={startScan} className="flex-1 bg-accent hover:bg-accent/90" disabled={!sessionSubject}>
                         <Video className="mr-2 h-4 w-4" /> Start Camera
                     </Button>
                 ) : (
@@ -247,6 +278,9 @@ export default function QrPage() {
                         <VideoOff className="mr-2 h-4 w-4" /> Stop Camera
                     </Button>
                 )}
+                 <Button onClick={resetSession} variant="outline" size="icon" title="Reset Session">
+                    <Trash2 className="h-4 w-4" />
+                </Button>
             </div>
             
              {hasCameraPermission === false && (
@@ -274,10 +308,10 @@ export default function QrPage() {
                 </div>
                 <ul className="max-h-40 w-full overflow-y-auto rounded-md border p-2 text-sm">
                   {sessionScans.map((scan, i) => (
-                      <li key={i} className="flex items-center justify-between p-1">
+                      <li key={`${scan.studentId}-${i}`} className="flex items-center justify-between p-1">
                         <span className="flex items-center gap-2">
                             <UserCheck className="h-4 w-4 text-green-500" />
-                            {scan.studentName} ({scan.subject})
+                            {scan.studentId}
                         </span>
                       </li>
                   ))}
@@ -330,17 +364,19 @@ export default function QrPage() {
     }
     if (user?.type === 'teacher') {
       return (
-        <Card>
+         <Card>
             <CardHeader>
-              <CardTitle>Your Static QR Code</CardTitle>
-              <CardDescription>This is your static identification QR code.</CardDescription>
+              <CardTitle>Your Subjects</CardTitle>
+              <CardDescription>These are the subjects you are assigned to teach. Select one for the attendance session.</CardDescription>
             </CardHeader>
             <CardContent>
-              {qrCodeUrl && (
-                <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-card-foreground/5 p-4">
-                  <Image src={qrCodeUrl} alt="Teacher QR Code" width={200} height={200} className="rounded-md" />
-                </div>
-              )}
+                {user.subjects && user.subjects.length > 0 ? (
+                    <ul className="space-y-2">
+                        {user.subjects.map(s => <li key={s} className="rounded-md border p-2 text-sm font-medium">{s}</li>)}
+                    </ul>
+                ) : (
+                    <p className="text-sm text-muted-foreground">You are not assigned to any subjects.</p>
+                )}
             </CardContent>
         </Card>
       );
@@ -354,14 +390,12 @@ export default function QrPage() {
       <canvas ref={canvasRef} style={{ display: "none" }} />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="flex flex-col gap-6">
-          {renderQrGenerator()}
+          {renderScanner()}
         </div>
         <div className="flex flex-col gap-6">
-          {renderScanner()}
+          {renderQrGenerator()}
         </div>
       </div>
     </div>
   );
 }
-
-    

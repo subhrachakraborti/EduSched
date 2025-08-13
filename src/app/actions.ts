@@ -7,13 +7,6 @@ import { supabase } from '@/lib/supabase';
 import { getFirebaseAdmin } from '@/lib/firebase-admin';
 import { parse, isValid, format } from 'date-fns';
 
-type SessionScan = {
-  studentId: string;
-  studentName: string; // This will now be the ID initially
-  date: string; // ddmmyy
-  subject: string;
-};
-
 export async function generateTimetableAction(
   courses: string[],
   teachers: string[],
@@ -56,80 +49,64 @@ export async function generateTimetableAction(
 }
 
 export async function batchRecordAttendanceAction(
-    scans: SessionScan[],
+    studentIds: string[],
+    subjectCode: string,
     markerId: string
 ): Promise<{ success?: boolean; count?: number; error?: string }> {
     try {
-        const attendanceRecords: Omit<AttendanceEntry, 'id' | 'created_at'>[] = [];
-        const uniqueEntries = new Set<string>();
+        if (!studentIds || studentIds.length === 0) {
+            return { error: 'No student IDs provided.' };
+        }
+        if (!subjectCode) {
+            return { error: 'No subject code provided.' };
+        }
 
-        // Fetch all relevant student names in one go
-        const studentIds = [...new Set(scans.map(scan => scan.studentId))];
-        if (studentIds.length === 0) {
-            return { error: "No student IDs were provided." };
+        const today = format(new Date(), 'yyyy-MM-dd');
+
+        // Deduplicate student IDs
+        const uniqueStudentIds = [...new Set(studentIds)];
+
+        // Check for existing records for these students for this subject today
+        const { data: existingRecords, error: checkError } = await supabase
+            .from('attendance')
+            .select('student_id')
+            .eq('date', today)
+            .eq('subject_code', subjectCode)
+            .in('student_id', uniqueStudentIds);
+
+        if (checkError) {
+            console.error('Error checking for existing attendance:', checkError);
+            return { error: 'Failed to check for existing attendance records.' };
+        }
+
+        const existingStudentIds = new Set(existingRecords.map(r => r.student_id));
+        const newStudentIds = uniqueStudentIds.filter(id => !existingStudentIds.has(id));
+
+        if (newStudentIds.length === 0) {
+            return { error: 'All scanned students have already been marked for this session.' };
         }
         
-        const { data: studentData, error: studentError } = await supabase
-            .from('users')
-            .select('id, name')
-            .in('id', studentIds);
+        const attendanceRecords = newStudentIds.map(studentId => ({
+            student_id: studentId,
+            date: today,
+            subject_code: subjectCode,
+            marked_by: markerId,
+        }));
 
-        if (studentError) {
-            console.error("Error fetching student data:", studentError);
-            return { error: "Could not retrieve student details from the database." };
-        }
-        
-        const studentNameMap = new Map(studentData.map(u => [u.id, u.name]));
-
-        for (const scan of scans) {
-            const parsedDate = parse(scan.date, 'ddMMyy', new Date());
-            if (!isValid(parsedDate)) {
-                console.warn(`Skipping record with invalid date format: ${scan.date}`);
-                continue;
-            }
-            const dateForDb = format(parsedDate, 'yyyy-MM-dd');
-            
-            // The student name is now retrieved from the map, not from the input `scan` object
-            const studentName = studentNameMap.get(scan.studentId);
-
-            if (!studentName) {
-                console.warn(`Skipping record for unknown student ID: ${scan.studentId}`);
-                continue;
-            }
-
-            const uniqueKey = `${scan.studentId}-${dateForDb}-${scan.subject}`;
-            if (uniqueEntries.has(uniqueKey)) {
-                continue;
-            }
-
-            attendanceRecords.push({
-                student_id: scan.studentId,
-                date: dateForDb,
-                subject_code: scan.subject,
-                marked_by: markerId,
-            });
-            uniqueEntries.add(uniqueKey);
-        }
-
-        if (attendanceRecords.length === 0) {
-            return { error: "No valid new attendance records to save." };
-        }
-
-        const { error: insertError } = await supabase.from('attendance').insert(attendanceRecords);
+        const { error: insertError } = await supabase
+            .from('attendance')
+            .insert(attendanceRecords);
 
         if (insertError) {
             console.error("Error inserting attendance records:", insertError);
-            if (insertError.code === '23505') { // PostgreSQL unique violation
-                return { error: 'Some attendance records already exist and were not saved again.' };
-            }
-            return { error: 'Failed to save attendance records to the database.' };
+            return { error: 'Failed to save attendance records to the database. ' + insertError.message };
         }
 
         return { success: true, count: attendanceRecords.length };
 
-    } catch (e) {
+    } catch (e: any) {
         console.error('Failed to record attendance:', e);
-        return { error: 'An unexpected error occurred while saving attendance.' };
+        return { error: 'An unexpected error occurred while saving attendance: ' + e.message };
     }
 }
 
@@ -235,7 +212,7 @@ export async function createUserAction(
         dob: userData.dob,
         type: userData.type,
         subjects: Array.isArray(userData.subjects) ? userData.subjects : (userData.subjects as string)?.split(',').map(s => s.trim()),
-        group: userData.group,
+        group: userData.type === 'student' ? userData.group : undefined,
     };
 
     const { error: supabaseError } = await supabase
@@ -261,5 +238,3 @@ export async function createUserAction(
     return { error: errorMessage };
   }
 }
-
-    
