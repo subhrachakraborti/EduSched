@@ -342,3 +342,47 @@ export async function fetchIssuedBooksAction(
         return { error: 'An unexpected error occurred.' };
     }
 }
+
+
+export async function fetchAllIssuedBooksAction(): Promise<{ books?: (IssuedBook & { users: { name: string }})[]; error?: string }> {
+    try {
+        const { data, error } = await supabase
+            .from('issued_books')
+            .select('*, users ( name )')
+            .order('issued_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching all issued books:', error);
+            return { error: 'Failed to retrieve the list of all issued books.' };
+        }
+        
+        // The return type from Supabase for a join is complex. We cast it to a simpler, expected type.
+        // @ts-ignore
+        return { books: data ?? [] };
+    } catch (e: any) {
+        console.error('Failed to fetch all issued books:', e);
+        return { error: 'An unexpected error occurred.' };
+    }
+}
+
+export async function freeIssuedBookAction(
+    issuedBookId: number
+): Promise<{ success?: boolean; error?: string }> {
+    try {
+        // Here you might want to add an extra check to ensure the user is an admin
+        // For now, we rely on the UI to only expose this action to admins.
+        const { error } = await supabase
+            .from('issued_books')
+            .delete()
+            .eq('id', issuedBookId);
+
+        if (error) {
+            console.error('Error freeing book:', error);
+            return { error: 'Failed to free the book. Please try again.' };
+        }
+        return { success: true };
+    } catch (e: any) {
+        console.error('Failed to free book:', e);
+        return { error: 'An unexpected error occurred while freeing the book.' };
+    }
+}

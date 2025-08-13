@@ -7,13 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { fetchBookDetailsAction, issueBookAction, fetchIssuedBooksAction } from '@/app/actions';
-import { Book, BookCheck, Library, Loader2, Search, RefreshCcw } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { fetchBookDetailsAction, issueBookAction, fetchIssuedBooksAction, fetchAllIssuedBooksAction, freeIssuedBookAction } from '@/app/actions';
+import { Book, BookCheck, Library, Loader2, Search, RefreshCcw, Trash2, Users } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import Image from 'next/image';
 import type { IssuedBook } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
 
 interface BookDetails {
     code: string;
@@ -101,8 +102,108 @@ const IssuedBooksList = React.forwardRef<IssuedBooksListRef>((props, ref) => {
         </Card>
     );
 });
-
 IssuedBooksList.displayName = 'IssuedBooksList';
+
+
+type AdminIssuedBook = IssuedBook & { users: { name: string } };
+
+function AllIssuedBooksList() {
+    const { toast } = useToast();
+    const [allIssuedBooks, setAllIssuedBooks] = useState<AdminIssuedBook[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isDeleting, setIsDeleting] = useState<number | null>(null);
+
+    const loadAllIssuedBooks = useCallback(async () => {
+        setIsLoading(true);
+        const result = await fetchAllIssuedBooksAction();
+        if (result.error) {
+            toast({ variant: 'destructive', title: 'Error', description: result.error });
+        } else {
+            setAllIssuedBooks(result.books || []);
+        }
+        setIsLoading(false);
+    }, [toast]);
+    
+    useEffect(() => {
+        loadAllIssuedBooks();
+    }, [loadAllIssuedBooks]);
+    
+    const handleFreeBook = async (bookId: number) => {
+        setIsDeleting(bookId);
+        const result = await freeIssuedBookAction(bookId);
+        if (result.error) {
+            toast({ variant: 'destructive', title: 'Error', description: result.error });
+        } else {
+            toast({ title: 'Success', description: 'Book has been freed.' });
+            loadAllIssuedBooks(); // Refresh list
+        }
+        setIsDeleting(null);
+    }
+    
+    return (
+        <Card>
+             <CardHeader>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Users className="h-6 w-6" />
+                        <CardTitle>All Issued Books</CardTitle>
+                    </div>
+                     <Button variant="ghost" size="icon" onClick={loadAllIssuedBooks} disabled={isLoading}>
+                        <RefreshCcw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+                    </Button>
+                </div>
+                <CardDescription>All books currently checked out by students.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 {isLoading ? (
+                    <div className="space-y-2">
+                        {Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                    </div>
+                ) : allIssuedBooks.length > 0 ? (
+                    <ul className="divide-y">
+                        {allIssuedBooks.map((book) => (
+                             <li key={book.id} className="flex items-center justify-between py-3">
+                                <div>
+                                    <p className="font-semibold">{book.book_title}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Issued to <span className="font-medium text-foreground">{book.users.name}</span>
+                                        <span className="hidden sm:inline"> &middot; {formatDistanceToNow(new Date(book.issued_at), { addSuffix: true })}</span>
+                                    </p>
+                                </div>
+                                
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="destructive" size="sm" disabled={isDeleting === book.id}>
+                                            {isDeleting === book.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                                            <span className="ml-2 hidden sm:inline">Free</span>
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                This action will mark the book "{book.book_title}" as returned for {book.users.name}. This cannot be undone.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleFreeBook(book.id)}>Confirm</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                                
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                     <div className="text-center text-muted-foreground py-8">
+                        <p>No books are currently issued.</p>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
 
 
 export default function LibraryPage() {
@@ -137,6 +238,10 @@ export default function LibraryPage() {
 
     const handleIssueBook = async () => {
         if (!foundBook || !user) return;
+        if (user.type !== 'student') {
+             toast({ variant: 'destructive', title: 'Only students can issue books.' });
+             return;
+        }
 
         setIsIssuing(true);
         const result = await issueBookAction(user.id, foundBook.code, foundBook.title, foundBook.author, foundBook.coverUrl);
@@ -162,7 +267,7 @@ export default function LibraryPage() {
         <div className="space-y-6">
             <div>
                 <h1 className="text-2xl font-bold md:text-3xl">Library</h1>
-                <p className="text-muted-foreground">Search for a book by its code to issue it.</p>
+                <p className="text-muted-foreground">Search for a book by its code to issue it, or manage issued books.</p>
             </div>
 
             <Card>
@@ -189,13 +294,14 @@ export default function LibraryPage() {
             </Card>
             
             {user?.type === 'student' && <IssuedBooksList ref={issuedBooksListRef} />}
+            {user?.type === 'admin' && <AllIssuedBooksList />}
 
             {foundBook && (
                 <AlertDialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                     <AlertDialogContent>
                         <AlertDialogHeader>
                             <AlertDialogTitle>{foundBook.title}</AlertDialogTitle>
-                            <AlertDialogDescription className="flex items-center gap-4 pt-4">
+                            <AlertDialogDescription className="flex flex-col items-center gap-4 pt-4 sm:flex-row">
                                <Image 
                                     src={foundBook.coverUrl} 
                                     alt={foundBook.title} 
@@ -204,7 +310,7 @@ export default function LibraryPage() {
                                     className="rounded-md object-cover shadow-md"
                                     data-ai-hint="book cover" 
                                 />
-                               <div className="flex-1 space-y-2">
+                               <div className="flex-1 space-y-2 text-center sm:text-left">
                                     <p className="text-sm"><strong>Author:</strong> {foundBook.author}</p>
                                     <p className="text-sm text-foreground">{foundBook.description}</p>
                                </div>
@@ -212,7 +318,7 @@ export default function LibraryPage() {
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel onClick={closeDialog}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleIssueBook} disabled={isIssuing}>
+                            <AlertDialogAction onClick={handleIssueBook} disabled={isIssuing || user?.type !== 'student'}>
                                 {isIssuing && <Loader2 className="mr-2 animate-spin" />}
                                 Issue Book
                             </AlertDialogAction>
