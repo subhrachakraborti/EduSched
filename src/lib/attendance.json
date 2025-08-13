@@ -1,75 +1,21 @@
 
 [
   {
-    "student_id": "student001",
-    "date": "2025-08-12",
-    "subject_code": "Phys201",
-    "marked_by": "teacher001"
+    "id": "2q7ODTlgFSgTUjhOecFQ6ZSWQ3z2",
+    "Computer Science": "78/100",
+    "Statistics": "63/85",
+    "Mathematics": "78/99"
   },
   {
-    "student_id": "student001",
-    "date": "2025-08-13",
-    "subject_code": "Phys201",
-    "marked_by": "teacher001"
-  },
-    {
-    "student_id": "student001",
-    "date": "2025-08-14",
-    "subject_code": "Phys201",
-    "marked_by": "teacher001"
+    "id": "rN1SUZ1xPqSqmook4l4diYjfuYp2",
+    "Economics": "75/100",
+    "Statistics": "75/85",
+    "Mathematics": "45/68"
   },
   {
-    "student_id": "student001",
-    "date": "2025-08-12",
-    "subject_code": "Math101",
-    "marked_by": "teacher001"
-  },
-  {
-    "student_id": "student001",
-    "date": "2025-08-13",
-    "subject_code": "Math101",
-    "marked_by": "teacher001"
-  },
-  {
-    "student_id": "student001",
-    "date": "2025-08-12",
-    "subject_code": "CS101",
-    "marked_by": "teacher003"
-  },
-  {
-    "student_id": "student002",
-    "date": "2025-08-12",
-    "subject_code": "Bio101",
-    "marked_by": "teacher005"
-  },
-  {
-    "student_id": "student002",
-    "date": "2025-08-13",
-    "subject_code": "Bio101",
-    "marked_by": "teacher005"
-  },
-  {
-    "student_id": "student002",
-    "date": "2025-08-14",
-    "subject_code": "Bio101",
-    "marked_by": "teacher005"
-  },
-  {
-    "student_id": "student002",
-    "date": "2025-08-15",
-    "subject_code": "Bio101",
-    "marked_by": "teacher005"
-  },
-   {
-    "student_id": "student002",
-    "date": "2025-08-12",
-    "subject_code": "Chem101",
-    "marked_by": "teacher002"
-  },
-  {
-    "student_id": "fY2fp98xVjMDGPGxJ82r7X0iqLp2",
-    "date": "2025-08-12",
-    "subject_code": "Phys201",
-    "marked_by": "teacher001"
+    "id": "fY2fp98xVjMDGPGxJ82r7X0iqLp2",
+    "Economics": "55/87",
+    "History": "48/88",
+    "Mathematics": "78/99"
   }
 ]

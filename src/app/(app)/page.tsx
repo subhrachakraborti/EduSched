@@ -16,14 +16,13 @@ import { Button } from "@/components/ui/button";
 import { CalendarDays, FileWarning, Target } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ScheduleEntry, AttendanceEntry } from "@/lib/types";
+import type { ScheduleEntry } from "@/lib/types";
 import { fetchScheduleAction } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import attendanceData from '@/lib/attendance.json';
 
 const GAUGE_COLORS = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
-const TOTAL_CLASSES_PER_SUBJECT = 20; // Mock total classes for percentage calculation
 
 function AttendanceGauge({ subject, present, total }: { subject: string, present: number, total: number }) {
   const percentage = total > 0 ? (present / total) * 100 : 0;
@@ -74,18 +73,24 @@ function AttendanceGauge({ subject, present, total }: { subject: string, present
 
 function StudentAttendanceSection({ studentId }: { studentId: string }) {
     const studentAttendance = useMemo(() => {
-        const attendances: Record<string, number> = {};
-        (attendanceData as AttendanceEntry[])
-            .filter(entry => entry.student_id === studentId)
-            .forEach(entry => {
-                attendances[entry.subject_code] = (attendances[entry.subject_code] || 0) + 1;
+        const studentData = attendanceData.find(entry => entry.id === studentId);
+        if (!studentData) {
+            return [];
+        }
+
+        return Object.entries(studentData)
+            .filter(([key]) => key !== 'id')
+            .map(([subject, value]) => {
+                const [presentStr, totalStr] = (value as string).split('/');
+                const present = parseInt(presentStr, 10);
+                const total = parseInt(totalStr, 10);
+                return { subject, present, total };
             });
-        return attendances;
+
     }, [studentId]);
 
-    const subjects = Object.keys(studentAttendance);
 
-    if (subjects.length === 0) {
+    if (studentAttendance.length === 0) {
         return null;
     }
 
@@ -100,12 +105,12 @@ function StudentAttendanceSection({ studentId }: { studentId: string }) {
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-                    {subjects.map(subject => (
+                    {studentAttendance.map(({ subject, present, total }) => (
                         <AttendanceGauge 
                             key={subject}
                             subject={subject}
-                            present={studentAttendance[subject]}
-                            total={TOTAL_CLASSES_PER_SUBJECT}
+                            present={present}
+                            total={total}
                         />
                     ))}
                 </div>
@@ -199,7 +204,7 @@ export default function DashboardPage() {
         </p>
       </div>
       
-      {user?.type === 'student' && <StudentAttendanceSection studentId={user.id} />}
+      {user?.type === 'student' && user.id && <StudentAttendanceSection studentId={user.id} />}
 
       <Card>
         <CardHeader>
