@@ -118,7 +118,7 @@ function StudentAttendanceSection({ studentId }: { studentId: string }) {
                 <CardDescription>Your attendance percentage for each subject.</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                     {studentAttendance.map(({ subject, present, total }) => (
                         <AttendanceGauge 
                             key={subject}
