@@ -264,45 +264,43 @@ export default function DashboardPage() {
     }
 
     return (
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Day</TableHead>
-              <TableHead>Time</TableHead>
-              <TableHead>Course</TableHead>
-              <TableHead className="hidden md:table-cell">Teacher</TableHead>
-              <TableHead className="hidden md:table-cell">Classroom</TableHead>
-              <TableHead className="text-left">Topic</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {schedule.map((entry) => {
-                const isTeacherForClass = user?.type === 'teacher' && user.name === entry.teacher;
-                const canEdit = user?.type === 'admin' || isTeacherForClass;
-                return (
-                  <TableRow key={entry.id}>
-                    <TableCell>{entry.day}</TableCell>
-                    <TableCell>{entry.time}</TableCell>
-                    <TableCell>{entry.course}</TableCell>
-                    <TableCell className="hidden md:table-cell">{entry.teacher}</TableCell>
-                    <TableCell className="hidden md:table-cell">{entry.classroom}</TableCell>
-                    <TableCell className="flex items-center gap-2">
-                        <span className="flex-1 text-muted-foreground text-xs">
-                          {entry.logbook && entry.logbook.length > 0 ? entry.logbook[0].topic : 'Not set'}
-                        </span>
-                        {canEdit && (
-                            <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleOpenLogbook(entry)}>
-                               <Edit className="h-4 w-4" />
-                            </Button>
-                        )}
-                    </TableCell>
-                  </TableRow>
-                )
-            })}
-          </TableBody>
-        </Table>
-      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Day</TableHead>
+            <TableHead>Time</TableHead>
+            <TableHead>Course</TableHead>
+            <TableHead className="hidden md:table-cell">Teacher</TableHead>
+            <TableHead className="hidden md:table-cell">Classroom</TableHead>
+            <TableHead className="text-left">Topic</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {schedule.map((entry) => {
+              const isTeacherForClass = user?.type === 'teacher' && user.name === entry.teacher;
+              const canEdit = user?.type === 'admin' || isTeacherForClass;
+              return (
+                <TableRow key={entry.id}>
+                  <TableCell>{entry.day}</TableCell>
+                  <TableCell>{entry.time}</TableCell>
+                  <TableCell>{entry.course}</TableCell>
+                  <TableCell className="hidden md:table-cell">{entry.teacher}</TableCell>
+                  <TableCell className="hidden md:table-cell">{entry.classroom}</TableCell>
+                  <TableCell className="flex items-center gap-2">
+                      <span className="flex-1 text-muted-foreground text-xs">
+                        {entry.logbook && entry.logbook.length > 0 ? entry.logbook[0].topic : 'Not set'}
+                      </span>
+                      {canEdit && (
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleOpenLogbook(entry)}>
+                              <Edit className="h-4 w-4" />
+                          </Button>
+                      )}
+                  </TableCell>
+                </TableRow>
+              )
+          })}
+        </TableBody>
+      </Table>
     );
   };
 
@@ -325,7 +323,9 @@ export default function DashboardPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {renderSchedule()}
+          <div className="overflow-x-auto">
+            {renderSchedule()}
+          </div>
         </CardContent>
       </Card>
       
