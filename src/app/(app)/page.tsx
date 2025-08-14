@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, FileWarning, Target, PlusCircle, Loader2, Edit } from "lucide-react";
+import { CalendarDays, FileWarning, Target, PlusCircle, Loader2, Edit, View } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ScheduleEntryWithTopic } from "@/lib/types";
@@ -29,6 +29,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -118,7 +119,7 @@ function StudentAttendanceSection({ studentId }: { studentId: string }) {
                 <CardDescription>Your attendance percentage for each subject.</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3">
                     {studentAttendance.map(({ subject, present, total }) => (
                         <AttendanceGauge 
                             key={subject}
@@ -207,6 +208,87 @@ function LogbookDialog({
     );
 }
 
+const FullScheduleTable = ({ schedule, onOpenLogbook }: { schedule: ScheduleEntryWithTopic[], onOpenLogbook: (entry: ScheduleEntryWithTopic) => void }) => {
+    const { user } = useSchedule();
+    return (
+        <div className="w-full overflow-x-auto">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Day</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Course</TableHead>
+                        <TableHead>Teacher</TableHead>
+                        <TableHead>Classroom</TableHead>
+                        <TableHead className="text-left">Topic</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {schedule.map((entry) => {
+                        const isTeacherForClass = user?.type === 'teacher' && user.name === entry.teacher;
+                        const canEdit = user?.type === 'admin' || isTeacherForClass;
+                        return (
+                            <TableRow key={entry.id}>
+                                <TableCell>{entry.day}</TableCell>
+                                <TableCell>{entry.time}</TableCell>
+                                <TableCell>{entry.course}</TableCell>
+                                <TableCell>{entry.teacher}</TableCell>
+                                <TableCell>{entry.classroom}</TableCell>
+                                <TableCell className="flex items-center gap-2">
+                                    <span className="flex-1 text-muted-foreground text-xs">
+                                        {entry.logbook && entry.logbook.length > 0 ? entry.logbook[0].topic : 'Not set'}
+                                    </span>
+                                    {canEdit && (
+                                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => onOpenLogbook(entry)}>
+                                            <Edit className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                </TableCell>
+                            </TableRow>
+                        )
+                    })}
+                </TableBody>
+            </Table>
+        </div>
+    );
+};
+
+const MobileScheduleList = ({ schedule, onOpenLogbook }: { schedule: ScheduleEntryWithTopic[], onOpenLogbook: (entry: ScheduleEntryWithTopic) => void }) => {
+    const { user } = useSchedule();
+    return (
+        <div className="space-y-4">
+            {schedule.map((entry) => {
+                const isTeacherForClass = user?.type === 'teacher' && user.name === entry.teacher;
+                const canEdit = user?.type === 'admin' || isTeacherForClass;
+                return (
+                    <Card key={entry.id}>
+                        <CardContent className="p-4">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="font-bold text-lg">{entry.course}</p>
+                                    <p className="text-sm text-muted-foreground">{entry.day}, {entry.time}</p>
+                                    <p className="text-sm text-muted-foreground">Teacher: {entry.teacher} | Room: {entry.classroom}</p>
+                                </div>
+                                {canEdit && (
+                                    <Button variant="ghost" size="icon" onClick={() => onOpenLogbook(entry)}>
+                                        <Edit className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="mt-2 border-t pt-2">
+                                <p className="text-xs font-semibold">Topic:</p>
+                                <p className="text-sm text-muted-foreground">
+                                    {entry.logbook && entry.logbook.length > 0 ? entry.logbook[0].topic : 'Not set'}
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )
+            })}
+        </div>
+    )
+}
+
 export default function DashboardPage() {
   const { user, schedule, setSchedule, isLoading } = useSchedule();
   const [isFetching, setIsFetching] = useState(true);
@@ -240,7 +322,7 @@ export default function DashboardPage() {
       return (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
+            <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
       );
@@ -264,43 +346,35 @@ export default function DashboardPage() {
     }
 
     return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Day</TableHead>
-            <TableHead>Time</TableHead>
-            <TableHead>Course</TableHead>
-            <TableHead className="hidden md:table-cell">Teacher</TableHead>
-            <TableHead className="hidden md:table-cell">Classroom</TableHead>
-            <TableHead className="text-left">Topic</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {schedule.map((entry) => {
-              const isTeacherForClass = user?.type === 'teacher' && user.name === entry.teacher;
-              const canEdit = user?.type === 'admin' || isTeacherForClass;
-              return (
-                <TableRow key={entry.id}>
-                  <TableCell>{entry.day}</TableCell>
-                  <TableCell>{entry.time}</TableCell>
-                  <TableCell>{entry.course}</TableCell>
-                  <TableCell className="hidden md:table-cell">{entry.teacher}</TableCell>
-                  <TableCell className="hidden md:table-cell">{entry.classroom}</TableCell>
-                  <TableCell className="flex items-center gap-2">
-                      <span className="flex-1 text-muted-foreground text-xs">
-                        {entry.logbook && entry.logbook.length > 0 ? entry.logbook[0].topic : 'Not set'}
-                      </span>
-                      {canEdit && (
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleOpenLogbook(entry)}>
-                              <Edit className="h-4 w-4" />
-                          </Button>
-                      )}
-                  </TableCell>
-                </TableRow>
-              )
-          })}
-        </TableBody>
-      </Table>
+      <>
+        {/* Mobile View */}
+        <div className="md:hidden">
+            <Dialog>
+                <DialogTrigger asChild>
+                    <Button className="w-full mb-4">
+                        <View className="mr-2 h-4 w-4" /> View Full Timetable
+                    </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-[95vw] w-full p-4">
+                    <DialogHeader>
+                        <DialogTitle>Full Timetable</DialogTitle>
+                    </DialogHeader>
+                    <FullScheduleTable schedule={schedule} onOpenLogbook={handleOpenLogbook} />
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button variant="outline">Close</Button>
+                        </DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <MobileScheduleList schedule={schedule} onOpenLogbook={handleOpenLogbook} />
+        </div>
+
+        {/* Desktop View */}
+        <div className="hidden md:block">
+            <FullScheduleTable schedule={schedule} onOpenLogbook={handleOpenLogbook} />
+        </div>
+      </>
     );
   };
 
@@ -323,9 +397,7 @@ export default function DashboardPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
             {renderSchedule()}
-          </div>
         </CardContent>
       </Card>
       
