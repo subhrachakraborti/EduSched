@@ -3,7 +3,7 @@
 
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { Subject, Teacher, Classroom, TimeSlot, StudentGroup, ScheduleEntry, User } from '@/lib/types';
+import type { Subject, Teacher, Classroom, TimeSlot, ScheduleEntryWithTopic, User } from '@/lib/types';
 import { auth } from '@/lib/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { supabase } from '@/lib/supabase';
@@ -26,9 +26,9 @@ interface ScheduleContextType {
   timeSlots: TimeSlot[];
   addTimeSlot: (timeSlot: Omit<TimeSlot, 'id'>) => void;
   removeTimeSlot: (id: string) => void;
-  schedule: ScheduleEntry[];
-  setSchedule: (schedule: ScheduleEntry[]) => void;
-  updateScheduleEntry: (id: string, field: keyof ScheduleEntry, value: string) => void;
+  schedule: ScheduleEntryWithTopic[];
+  setSchedule: (schedule: ScheduleEntryWithTopic[]) => void;
+  updateScheduleEntry: (id: number, field: keyof ScheduleEntryWithTopic, value: string) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
 }
@@ -44,7 +44,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
-  const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
+  const [schedule, setSchedule] = useState<ScheduleEntryWithTopic[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -100,7 +100,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const addTimeSlot = (timeSlot: Omit<TimeSlot, 'id'>) => setTimeSlots(prev => [...prev, { ...timeSlot, id: crypto.randomUUID() }]);
   const removeTimeSlot = (id: string) => setTimeSlots(prev => prev.filter(ts => ts.id !== id));
 
-  const updateScheduleEntry = (id: string, field: keyof ScheduleEntry, value: string) => {
+  const updateScheduleEntry = (id: number, field: keyof ScheduleEntryWithTopic, value: string) => {
     setSchedule(prev => prev.map(entry => entry.id === id ? { ...entry, [field]: value } : entry));
   };
 
@@ -144,5 +144,3 @@ export function useSchedule() {
   }
   return context;
 }
-
-    

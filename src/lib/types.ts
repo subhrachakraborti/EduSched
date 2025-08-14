@@ -38,7 +38,7 @@ export interface StudentGroup {
 }
 
 export interface ScheduleEntry {
-  id: string;
+  id: number;
   day: string;
   time: string;
   course: string;
@@ -63,4 +63,14 @@ export interface IssuedBook {
     book_title: string | null;
     book_author: string | null;
     book_cover_url: string | null;
+}
+
+export interface LogbookEntry {
+    id: number;
+    topic: string;
+    created_by: string;
+}
+
+export type ScheduleEntryWithTopic = ScheduleEntry & {
+    logbook: LogbookEntry[] | null;
 }

@@ -2,7 +2,7 @@
 'use server';
 
 import { generateSchedule } from '@/ai/flows/generate-schedule';
-import type { ScheduleEntry, User, IssuedBook } from '@/lib/types';
+import type { ScheduleEntry, User, IssuedBook, ScheduleEntryWithTopic } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { getFirebaseAdmin } from '@/lib/firebase-admin';
 import { parse, isValid, format } from 'date-fns';
@@ -384,5 +384,64 @@ export async function freeIssuedBookAction(
     } catch (e: any) {
         console.error('Failed to free book:', e);
         return { error: 'An unexpected error occurred while freeing the book.' };
+    }
+}
+
+
+// --- Logbook Actions ---
+
+export async function fetchScheduleWithLogbookAction(): Promise<{ schedule?: ScheduleEntryWithTopic[]; error?: string }> {
+    try {
+        // Fetch timeline and join with logbook entries
+        const { data, error } = await supabase
+            .from('timeline')
+            .select(`
+                *,
+                logbook (
+                    id,
+                    topic,
+                    created_by
+                )
+            `)
+            .order('day')
+            .order('time');
+
+        if (error) {
+            console.error("Error fetching schedule with logbook:", error);
+            return { error: 'Failed to fetch the schedule from the database.' };
+        }
+        return { schedule: data ?? [] };
+    } catch (e: any) {
+        console.error('Failed to fetch schedule:', e);
+        return { error: 'An unexpected error occurred while fetching the schedule.' };
+    }
+}
+
+export async function upsertLogbookTopicAction(
+    timelineId: number,
+    topic: string,
+    userId: string
+): Promise<{ success?: boolean; error?: string }> {
+    try {
+        const { error } = await supabase
+            .from('logbook')
+            .upsert(
+                {
+                    timeline_id: timelineId,
+                    topic: topic,
+                    created_by: userId,
+                },
+                { onConflict: 'timeline_id' }
+            );
+
+        if (error) {
+            console.error("Error upserting logbook topic:", error);
+            return { error: 'Failed to save the topic.' };
+        }
+
+        return { success: true };
+    } catch (e: any) {
+        console.error('Failed to save logbook topic:', e);
+        return { error: 'An unexpected error occurred while saving the topic.' };
     }
 }

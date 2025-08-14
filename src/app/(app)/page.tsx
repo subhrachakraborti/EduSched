@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useSchedule } from "@/context/schedule-context";
 import {
   Table,
@@ -13,14 +13,26 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, FileWarning, Target } from "lucide-react";
+import { CalendarDays, FileWarning, Target, PlusCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ScheduleEntry } from "@/lib/types";
-import { fetchScheduleAction } from "@/app/actions";
+import type { ScheduleEntryWithTopic } from "@/lib/types";
+import { fetchScheduleWithLogbookAction, upsertLogbookTopicAction } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import attendanceData from '@/lib/attendance.json';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+
 
 const GAUGE_COLORS = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
 
@@ -28,11 +40,10 @@ function AttendanceGauge({ subject, present, total }: { subject: string, present
   const percentage = total > 0 ? (present / total) * 100 : 0;
   
   const needle = useMemo(() => {
-    // Correct angle calculation: 180 degrees is 0%, 0 degrees is 100%
     const angle = 180 - (180 * (percentage / 100));
-    const length = 60; // Length of the needle
-    const cx = 80; // Center x of the gauge container
-    const cy = 80; // Center y of the gauge container
+    const length = 60;
+    const cx = 80;
+    const cy = 80;
     const x = cx + length * Math.cos(angle * Math.PI / 180);
     const y = cy - length * Math.sin(angle * Math.PI / 180);
     return { x1: cx, y1: cy, x2: x, y2: y };
@@ -122,25 +133,106 @@ function StudentAttendanceSection({ studentId }: { studentId: string }) {
     );
 }
 
+function LogbookDialog({
+    entry,
+    isOpen,
+    onOpenChange,
+    onTopicSave,
+}: {
+    entry: ScheduleEntryWithTopic | null;
+    isOpen: boolean;
+    onOpenChange: (open: boolean) => void;
+    onTopicSave: () => void;
+}) {
+    const { user } = useSchedule();
+    const { toast } = useToast();
+    const [topic, setTopic] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        if (entry?.logbook?.[0]?.topic) {
+            setTopic(entry.logbook[0].topic);
+        } else {
+            setTopic("");
+        }
+    }, [entry]);
+
+    const handleSave = async () => {
+        if (!entry || !user || !topic) return;
+        setIsSaving(true);
+        const result = await upsertLogbookTopicAction(entry.id, topic, user.id);
+        if (result.error) {
+            toast({ variant: "destructive", title: "Failed to save topic", description: result.error });
+        } else {
+            toast({ title: "Success", description: "Logbook topic has been saved." });
+            onTopicSave();
+            onOpenChange(false);
+        }
+        setIsSaving(false);
+    };
+
+    if (!entry) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Add/Edit Logbook Topic</DialogTitle>
+                    <DialogDescription>
+                        For {entry.course} on {entry.day} at {entry.time}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 py-4">
+                    <Label htmlFor="topic">Topic to be covered</Label>
+                    <Textarea
+                        id="topic"
+                        value={topic}
+                        onChange={(e) => setTopic(e.target.value)}
+                        placeholder="e.g., Chapter 5: Introduction to React Hooks"
+                        rows={4}
+                    />
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button onClick={handleSave} disabled={isSaving || !topic}>
+                        {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Save Topic
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export default function DashboardPage() {
   const { user, schedule, setSchedule, isLoading } = useSchedule();
   const [isFetching, setIsFetching] = useState(true);
+  const [logbookEntry, setLogbookEntry] = useState<ScheduleEntryWithTopic | null>(null);
+  const [isLogbookOpen, setIsLogbookOpen] = useState(false);
+  
   const { toast } = useToast();
 
-  useEffect(() => {
-    const loadSchedule = async () => {
-        setIsFetching(true);
-        const result = await fetchScheduleAction();
-        if (result.error) {
-            toast({ variant: 'destructive', title: 'Failed to load schedule', description: result.error });
-        } else {
-            setSchedule(result.schedule || []);
-        }
-        setIsFetching(false);
-    }
-    loadSchedule();
+  const loadSchedule = useCallback(async () => {
+      setIsFetching(true);
+      const result = await fetchScheduleWithLogbookAction();
+      if (result.error) {
+          toast({ variant: 'destructive', title: 'Failed to load schedule', description: result.error });
+      } else {
+          setSchedule(result.schedule || []);
+      }
+      setIsFetching(false);
   }, [setSchedule, toast]);
+  
+  useEffect(() => {
+    loadSchedule();
+  }, [loadSchedule]);
 
+  const handleOpenLogbook = (entry: ScheduleEntryWithTopic) => {
+    setLogbookEntry(entry);
+    setIsLogbookOpen(true);
+  };
 
   const renderSchedule = () => {
     if (isLoading || isFetching) {
@@ -177,9 +269,10 @@ export default function DashboardPage() {
             <TableRow>
               <TableHead>Day</TableHead>
               <TableHead>Time</TableHead>
-              <TableHead>Course</TableHead>
+              <TableHead>Course & Topic</TableHead>
               <TableHead>Teacher</TableHead>
               <TableHead>Classroom</TableHead>
+              {(user?.type === 'admin' || user?.type === 'teacher') && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -187,9 +280,22 @@ export default function DashboardPage() {
               <TableRow key={entry.id}>
                 <TableCell>{entry.day}</TableCell>
                 <TableCell>{entry.time}</TableCell>
-                <TableCell>{entry.course}</TableCell>
+                <TableCell>
+                  <div className="font-medium">{entry.course}</div>
+                  {entry.logbook && entry.logbook.length > 0 && (
+                    <div className="text-xs text-muted-foreground">{entry.logbook[0].topic}</div>
+                  )}
+                </TableCell>
                 <TableCell>{entry.teacher}</TableCell>
                 <TableCell>{entry.classroom}</TableCell>
+                {(user?.type === 'admin' || user?.type === 'teacher') && (
+                    <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => handleOpenLogbook(entry)}>
+                           <PlusCircle className="mr-2 h-4 w-4" />
+                           Topic
+                        </Button>
+                    </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
@@ -220,6 +326,13 @@ export default function DashboardPage() {
           {renderSchedule()}
         </CardContent>
       </Card>
+      
+      <LogbookDialog
+        isOpen={isLogbookOpen}
+        onOpenChange={setIsLogbookOpen}
+        entry={logbookEntry}
+        onTopicSave={loadSchedule}
+      />
     </div>
   );
 }
