@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, FileWarning, Target, PlusCircle, Loader2 } from "lucide-react";
+import { CalendarDays, FileWarning, Target, PlusCircle, Loader2, Edit } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ScheduleEntryWithTopic } from "@/lib/types";
@@ -160,6 +160,7 @@ function LogbookDialog({
     const handleSave = async () => {
         if (!entry || !user || !topic) return;
         setIsSaving(true);
+        // Pass user's name for server-side validation
         const result = await upsertLogbookTopicAction(entry.id, topic, user.id);
         if (result.error) {
             toast({ variant: "destructive", title: "Failed to save topic", description: result.error });
@@ -269,35 +270,36 @@ export default function DashboardPage() {
             <TableRow>
               <TableHead>Day</TableHead>
               <TableHead>Time</TableHead>
-              <TableHead>Course & Topic</TableHead>
+              <TableHead>Course</TableHead>
               <TableHead>Teacher</TableHead>
               <TableHead>Classroom</TableHead>
-              {(user?.type === 'admin' || user?.type === 'teacher') && <TableHead className="text-right">Actions</TableHead>}
+              <TableHead className="text-left">Topic</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {schedule.map((entry) => (
-              <TableRow key={entry.id}>
-                <TableCell>{entry.day}</TableCell>
-                <TableCell>{entry.time}</TableCell>
-                <TableCell>
-                  <div className="font-medium">{entry.course}</div>
-                  {entry.logbook && entry.logbook.length > 0 && (
-                    <div className="text-xs text-muted-foreground">{entry.logbook[0].topic}</div>
-                  )}
-                </TableCell>
-                <TableCell>{entry.teacher}</TableCell>
-                <TableCell>{entry.classroom}</TableCell>
-                {(user?.type === 'admin' || user?.type === 'teacher') && (
-                    <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => handleOpenLogbook(entry)}>
-                           <PlusCircle className="mr-2 h-4 w-4" />
-                           Topic
-                        </Button>
+            {schedule.map((entry) => {
+                const isTeacherForClass = user?.type === 'teacher' && user.name === entry.teacher;
+                const canEdit = user?.type === 'admin' || isTeacherForClass;
+                return (
+                  <TableRow key={entry.id}>
+                    <TableCell>{entry.day}</TableCell>
+                    <TableCell>{entry.time}</TableCell>
+                    <TableCell>{entry.course}</TableCell>
+                    <TableCell>{entry.teacher}</TableCell>
+                    <TableCell>{entry.classroom}</TableCell>
+                    <TableCell className="flex items-center gap-2">
+                        <span className="flex-1 text-muted-foreground text-xs">
+                          {entry.logbook && entry.logbook.length > 0 ? entry.logbook[0].topic : 'Not set'}
+                        </span>
+                        {canEdit && (
+                            <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleOpenLogbook(entry)}>
+                               <Edit className="h-4 w-4" />
+                            </Button>
+                        )}
                     </TableCell>
-                )}
-              </TableRow>
-            ))}
+                  </TableRow>
+                )
+            })}
           </TableBody>
         </Table>
       </div>

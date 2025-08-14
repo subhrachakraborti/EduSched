@@ -420,9 +420,39 @@ export async function fetchScheduleWithLogbookAction(): Promise<{ schedule?: Sch
 export async function upsertLogbookTopicAction(
     timelineId: number,
     topic: string,
-    userId: string
+    userId: string,
 ): Promise<{ success?: boolean; error?: string }> {
     try {
+        // 1. Get the user's details (type and name)
+        const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('type, name')
+            .eq('id', userId)
+            .single();
+
+        if (userError || !user) {
+            return { error: "User not found or could not be verified." };
+        }
+
+        // 2. If the user is a teacher, verify they are assigned to this class
+        if (user.type === 'teacher') {
+            const { data: timelineEntry, error: timelineError } = await supabase
+                .from('timeline')
+                .select('teacher')
+                .eq('id', timelineId)
+                .single();
+
+            if (timelineError || !timelineEntry) {
+                return { error: "Could not find the class session." };
+            }
+
+            if (timelineEntry.teacher !== user.name) {
+                return { error: "You are not authorized to edit the logbook for this class." };
+            }
+        }
+        // Admins can proceed without this check
+
+        // 3. Upsert the logbook entry
         const { error } = await supabase
             .from('logbook')
             .upsert(
