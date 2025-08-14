@@ -271,8 +271,8 @@ export default function DashboardPage() {
               <TableHead>Day</TableHead>
               <TableHead>Time</TableHead>
               <TableHead>Course</TableHead>
-              <TableHead>Teacher</TableHead>
-              <TableHead>Classroom</TableHead>
+              <TableHead className="hidden md:table-cell">Teacher</TableHead>
+              <TableHead className="hidden md:table-cell">Classroom</TableHead>
               <TableHead className="text-left">Topic</TableHead>
             </TableRow>
           </TableHeader>
@@ -285,8 +285,8 @@ export default function DashboardPage() {
                     <TableCell>{entry.day}</TableCell>
                     <TableCell>{entry.time}</TableCell>
                     <TableCell>{entry.course}</TableCell>
-                    <TableCell>{entry.teacher}</TableCell>
-                    <TableCell>{entry.classroom}</TableCell>
+                    <TableCell className="hidden md:table-cell">{entry.teacher}</TableCell>
+                    <TableCell className="hidden md:table-cell">{entry.classroom}</TableCell>
                     <TableCell className="flex items-center gap-2">
                         <span className="flex-1 text-muted-foreground text-xs">
                           {entry.logbook && entry.logbook.length > 0 ? entry.logbook[0].topic : 'Not set'}
