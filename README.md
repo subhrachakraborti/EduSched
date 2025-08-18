@@ -29,7 +29,7 @@ The application is built with a modern tech stack, featuring a Next.js frontend,
 *   **Styling**: [Tailwind CSS](https://tailwindcss.com/)
 *   **UI Components**: [ShadCN UI](https://ui.shadcn.com/)
 *   **Icons**: [Lucide React](https://lucide.dev/guide/packages/lucide-react)
-*   **Deployment**: Ready for Firebase App Hosting
+*   **Deployment**:Hoisted on Vercel
 
 ## 🚀 Getting Started
 
